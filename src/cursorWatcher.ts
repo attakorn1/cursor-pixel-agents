@@ -19,6 +19,7 @@ export class CursorWatcher implements vscode.Disposable {
   private hooksWatcher: fs.FSWatcher | null = null;
   private hooksFilePos = 0;
   private didRealWork = false;
+  private lastKnownSessionId: string | null = null;
   private log: vscode.OutputChannel;
 
   constructor(onStatusChange: (status: ParsedStatus) => void) {
@@ -145,6 +146,7 @@ export class CursorWatcher implements vscode.Disposable {
       const isBackgroundAgent = typeof state.isBackgroundAgent === 'boolean'
         ? state.isBackgroundAgent
         : undefined;
+      this.rememberSessionId(sessionId);
 
       if (activity === 'editing' || activity === 'running') {
         this.didRealWork = true;
@@ -244,6 +246,7 @@ export class CursorWatcher implements vscode.Disposable {
         );
         if (fs.existsSync(jsonlPath) && !this.filePositions.has(jsonlPath)) {
           const sessionId = entry.name;
+          this.rememberSessionId(sessionId);
           this.log.appendLine(`[scan] New transcript (session ${sessionId}): ${entry.name}`);
           this.fileSessionIds.set(jsonlPath, sessionId);
           this.onStatusChange({
@@ -314,6 +317,7 @@ export class CursorWatcher implements vscode.Disposable {
         const status = parseTranscriptLine(line);
         if (!status) continue;
         if (sessionId) status.sessionId = sessionId;
+        this.rememberSessionId(status.sessionId);
         this.log.appendLine(
           `[activity] ${status.activity}: ${status.statusText}${sessionId ? ` [${sessionId}]` : ''}`,
         );
@@ -327,10 +331,19 @@ export class CursorWatcher implements vscode.Disposable {
     }
   }
 
+  private rememberSessionId(sessionId?: string): void {
+    if (!sessionId) return;
+    this.lastKnownSessionId = sessionId;
+  }
+
   private resetIdleTimer(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      this.onStatusChange({ activity: 'idle', statusText: null });
+      this.onStatusChange({
+        activity: 'idle',
+        statusText: null,
+        sessionId: this.lastKnownSessionId ?? undefined,
+      });
     }, 8000);
   }
 
@@ -355,6 +368,7 @@ export class CursorWatcher implements vscode.Disposable {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.filePositions.clear();
     this.fileSessionIds.clear();
+    this.lastKnownSessionId = null;
     this.log.dispose();
   }
 }

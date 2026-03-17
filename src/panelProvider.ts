@@ -60,6 +60,7 @@ export class CursorPixelAgentsPanelProvider implements vscode.WebviewViewProvide
   private nextAgentId = 1;
   private currentToolId = 0;
   private celebrateTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastKnownSessionId: string | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -97,7 +98,18 @@ export class CursorPixelAgentsPanelProvider implements vscode.WebviewViewProvide
   }
 
   private resolveSessionId(status: ParsedStatus): string {
-    return status.sessionId || FALLBACK_SESSION;
+    if (status.sessionId) {
+      this.lastKnownSessionId = status.sessionId;
+      return status.sessionId;
+    }
+    if (this.lastKnownSessionId && this.sessionAgentMap.has(this.lastKnownSessionId)) {
+      return this.lastKnownSessionId;
+    }
+    if (this.sessionAgentMap.size === 1) {
+      const onlySessionId = this.sessionAgentMap.keys().next().value as string | undefined;
+      if (onlySessionId) return onlySessionId;
+    }
+    return FALLBACK_SESSION;
   }
 
   resolveWebviewView(
@@ -133,7 +145,16 @@ export class CursorPixelAgentsPanelProvider implements vscode.WebviewViewProvide
     if (!this.view) return;
     const webview = this.view.webview;
     const { activity } = status;
+    const hasExplicitSessionId = Boolean(status.sessionId);
     const sessionId = this.resolveSessionId(status);
+
+    if (hasExplicitSessionId && sessionId !== FALLBACK_SESSION) {
+      const fallbackAgent = this.sessionAgentMap.get(FALLBACK_SESSION);
+      if (fallbackAgent && !this.sessionAgentMap.has(sessionId)) {
+        this.sessionAgentMap.set(sessionId, fallbackAgent);
+        this.sessionAgentMap.delete(FALLBACK_SESSION);
+      }
+    }
 
     if (this.celebrateTimer) {
       clearTimeout(this.celebrateTimer);
@@ -141,6 +162,14 @@ export class CursorPixelAgentsPanelProvider implements vscode.WebviewViewProvide
     }
 
     if (activity === 'newSession') {
+      if (
+        !hasExplicitSessionId
+        && this.sessionAgentMap.size > 0
+        && !this.sessionAgentMap.has(FALLBACK_SESSION)
+      ) {
+        this.updateStatusBar(status);
+        return;
+      }
       this.getOrCreateAgent(sessionId, webview, {
         composerMode: status.composerMode,
         isBackgroundAgent: status.isBackgroundAgent,
@@ -164,6 +193,16 @@ export class CursorPixelAgentsPanelProvider implements vscode.WebviewViewProvide
       if (agent) {
         webview.postMessage({ type: 'agentToolsClear', id: agent.id });
       }
+      return;
+    }
+
+    if (
+      !hasExplicitSessionId
+      && sessionId === FALLBACK_SESSION
+      && this.sessionAgentMap.size > 0
+      && !this.sessionAgentMap.has(FALLBACK_SESSION)
+    ) {
+      this.updateStatusBar(status);
       return;
     }
 

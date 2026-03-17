@@ -4,6 +4,9 @@ STATE_FILE="${STATE_DIR}/cursor-pixel-agents-state.jsonl"
 input=$(cat)
 event=$(echo "$input" | grep -o '"hook_event_name":"[^"]*"' | head -1 | cut -d'"' -f4)
 session_id=$(echo "$input" | grep -o '"session_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ -z "$session_id" ]; then
+  session_id=$(echo "$input" | grep -o '"conversation_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+fi
 composer_mode=$(echo "$input" | grep -o '"composer_mode":"[^"]*"' | head -1 | cut -d'"' -f4)
 is_bg=$(echo "$input" | grep -o '"is_background_agent":\(true\|false\)' | head -1 | grep -o '\(true\|false\)')
 

@@ -32,7 +32,7 @@ import type {
   TileType as TileTypeVal,
 } from '../types.js';
 import { CharacterState, Direction, MATRIX_EFFECT_DURATION, TILE_SIZE } from '../types.js';
-import { clearIdleBubble, createCharacter, getStatusTextForTool, getWorkStateForTool, isSittingState, showStatus, updateCharacter } from './characters.js';
+import { clearIdleBubble, createCharacter, getStatusTextForTool, getWorkStateForTool, isSittingState, showStatus, snapToSeat, updateCharacter } from './characters.js';
 import { matrixEffectSeeds } from './matrixEffect.js';
 
 export class OfficeState {
@@ -333,8 +333,8 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
+      snapToSeat(ch, seat);
       ch.state = ch.isActive ? getWorkStateForTool(ch.currentTool) : CharacterState.IDLE_SITTING;
-      ch.dir = seat.facingDir;
       ch.frame = 0;
       ch.frameTimer = 0;
       if (!ch.isActive) {
@@ -359,8 +359,8 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
+      snapToSeat(ch, seat);
       ch.state = ch.isActive ? getWorkStateForTool(ch.currentTool) : CharacterState.IDLE_SITTING;
-      ch.dir = seat.facingDir;
       ch.frame = 0;
       ch.frameTimer = 0;
       if (!ch.isActive) {
@@ -493,25 +493,30 @@ export class OfficeState {
 
   setAgentActive(id: number, active: boolean): void {
     const ch = this.characters.get(id);
-    if (ch) {
-      ch.isActive = active;
-      if (active) {
-        clearIdleBubble(ch);
-        // If seated in idle, transition to working state
-        if (ch.state !== CharacterState.WALK) {
-          ch.state = getWorkStateForTool(ch.currentTool);
-          ch.frame = 0;
-          ch.frameTimer = 0;
+    if (!ch) return;
+
+    ch.isActive = active;
+    if (active) {
+      clearIdleBubble(ch);
+      if (ch.state !== CharacterState.WALK) {
+        if (ch.seatId) {
+          const seat = this.seats.get(ch.seatId);
+          if (seat) snapToSeat(ch, seat);
         }
-        showStatus(ch, getStatusTextForTool(ch.currentTool), STATUS_VISIBLE_DURATION_SEC);
-      } else {
-        ch.seatTimer = -1;
-        ch.path = [];
-        ch.moveProgress = 0;
-        showStatus(ch, 'Idle', STATUS_VISIBLE_DURATION_SEC);
+        ch.state = getWorkStateForTool(ch.currentTool);
+        ch.frame = 0;
+        ch.frameTimer = 0;
       }
+      showStatus(ch, getStatusTextForTool(ch.currentTool), STATUS_VISIBLE_DURATION_SEC);
       this.rebuildFurnitureInstances();
+      return;
     }
+
+    ch.seatTimer = -1;
+    ch.path = [];
+    ch.moveProgress = 0;
+    showStatus(ch, 'Idle', STATUS_VISIBLE_DURATION_SEC);
+    this.rebuildFurnitureInstances();
   }
 
   /** Rebuild furniture instances with auto-state applied (active agents turn electronics ON) */
@@ -523,9 +528,22 @@ export class OfficeState {
       const seat = this.seats.get(ch.seatId);
       if (!seat) continue;
       // Find the desk tile(s) the agent faces from their seat
-      const dCol =
-        seat.facingDir === Direction.RIGHT ? 1 : seat.facingDir === Direction.LEFT ? -1 : 0;
-      const dRow = seat.facingDir === Direction.DOWN ? 1 : seat.facingDir === Direction.UP ? -1 : 0;
+      let dCol = 0;
+      let dRow = 0;
+      switch (seat.facingDir) {
+        case Direction.RIGHT:
+          dCol = 1;
+          break;
+        case Direction.LEFT:
+          dCol = -1;
+          break;
+        case Direction.DOWN:
+          dRow = 1;
+          break;
+        case Direction.UP:
+          dRow = -1;
+          break;
+      }
       // Check tiles in the facing direction (desk could be 1-3 tiles deep)
       for (let d = 1; d <= AUTO_ON_FACING_DEPTH; d++) {
         const tileCol = seat.seatCol + dCol * d;
@@ -584,29 +602,34 @@ export class OfficeState {
 
   setAgentTool(id: number, tool: string | null): void {
     const ch = this.characters.get(id);
-    if (ch) {
-      ch.currentTool = tool;
-      if (ch.isActive && ch.state !== CharacterState.WALK) {
-        if (tool) {
-          const workState = getWorkStateForTool(tool);
-          if (ch.state !== workState) {
-            ch.state = workState;
-            ch.frame = 0;
-            ch.frameTimer = 0;
-            ch.completedTimer = 0;
-            if (workState === CharacterState.WORK_THINKING) {
-              ch.bubbleType = 'thinking';
-              ch.bubbleTimer = 0;
-            } else if (ch.bubbleType === 'thinking') {
-              ch.bubbleType = null;
-              ch.bubbleTimer = 0;
-            }
+    if (!ch) return;
+
+    ch.currentTool = tool;
+    if (ch.isActive && ch.state !== CharacterState.WALK) {
+      if (ch.seatId) {
+        const seat = this.seats.get(ch.seatId);
+        if (seat) snapToSeat(ch, seat);
+      }
+      if (tool) {
+        const workState = getWorkStateForTool(tool);
+        if (ch.state !== workState) {
+          ch.state = workState;
+          ch.frame = 0;
+          ch.frameTimer = 0;
+          ch.completedTimer = 0;
+          if (workState === CharacterState.WORK_THINKING) {
+            ch.bubbleType = 'thinking';
+            ch.bubbleTimer = 0;
+          } else if (ch.bubbleType === 'thinking') {
+            ch.bubbleType = null;
+            ch.bubbleTimer = 0;
           }
         }
       }
-      if (tool && ch.isActive) {
-        showStatus(ch, getStatusTextForTool(tool), STATUS_VISIBLE_DURATION_SEC);
-      }
+    }
+
+    if (tool && ch.isActive) {
+      showStatus(ch, getStatusTextForTool(tool), STATUS_VISIBLE_DURATION_SEC);
     }
   }
 
@@ -678,16 +701,17 @@ export class OfficeState {
       // Handle matrix effect animation
       if (ch.matrixEffect) {
         ch.matrixEffectTimer += dt;
-        if (ch.matrixEffectTimer >= MATRIX_EFFECT_DURATION) {
-          if (ch.matrixEffect === 'spawn') {
-            // Spawn complete — clear effect, resume normal FSM
-            ch.matrixEffect = null;
-            ch.matrixEffectTimer = 0;
-            ch.matrixEffectSeeds = [];
-          } else {
-            // Despawn complete — mark for deletion
-            toDelete.push(ch.id);
-          }
+        if (ch.matrixEffectTimer < MATRIX_EFFECT_DURATION) {
+          continue; // skip normal FSM while effect is active
+        }
+        if (ch.matrixEffect === 'spawn') {
+          // Spawn complete — clear effect, resume normal FSM
+          ch.matrixEffect = null;
+          ch.matrixEffectTimer = 0;
+          ch.matrixEffectSeeds = [];
+        } else {
+          // Despawn complete — mark for deletion
+          toDelete.push(ch.id);
         }
         continue; // skip normal FSM while effect is active
       }

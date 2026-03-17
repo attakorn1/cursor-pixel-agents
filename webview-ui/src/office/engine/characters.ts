@@ -171,6 +171,18 @@ function tileCenter(col: number, row: number): { x: number; y: number } {
   };
 }
 
+/** Snap character to seat position (tile coords, pixel center, dir, clear path). */
+export function snapToSeat(ch: Character, seat: Seat): void {
+  ch.tileCol = seat.seatCol;
+  ch.tileRow = seat.seatRow;
+  const center = tileCenter(seat.seatCol, seat.seatRow);
+  ch.x = center.x;
+  ch.y = center.y;
+  ch.dir = seat.facingDir;
+  ch.path = [];
+  ch.moveProgress = 0;
+}
+
 function directionBetween(
   fromCol: number,
   fromRow: number,
@@ -284,8 +296,8 @@ function startWorkOrWalkToSeat(
     ch.moveProgress = 0;
     ch.state = CharacterState.WALK;
   } else {
+    snapToSeat(ch, seat);
     ch.state = CharacterState.WORK_TYPING;
-    ch.dir = seat.facingDir;
   }
   resetAnimation(ch);
   return true;
@@ -338,8 +350,8 @@ export function updateCharacter(
 
   // Count down status overlay visibility
   // Hold visible while agent is active; otherwise count down
-  if (ch.isActive) {
-    if (ch.statusVisibleTimer < 1) ch.statusVisibleTimer = 1;
+  if (ch.isActive && ch.statusVisibleTimer < 1) {
+    ch.statusVisibleTimer = 1;
   } else if (ch.statusVisibleTimer > 0) {
     ch.statusVisibleTimer -= dt;
   }
@@ -405,8 +417,8 @@ function updateWorkThinking(ch: Character, dt: number): void {
     ch.frameTimer -= TYPE_FRAME_DURATION_SEC;
     ch.frame = 0;
   }
+  if (!ch.isActive && waitOnSeatTimer(ch, dt)) return;
   if (!ch.isActive) {
-    if (waitOnSeatTimer(ch, dt)) return;
     clearIdleBubble(ch);
     enterIdleWithWander(ch);
     return;
@@ -501,11 +513,12 @@ function updateIdleBehavior(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
 ): void {
-  if (ch.state === CharacterState.IDLE_CASUAL_TYPE || ch.state === CharacterState.IDLE_READING) {
-    if (ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
-      ch.frameTimer -= TYPE_FRAME_DURATION_SEC;
-      ch.frame = (ch.frame + 1) % 2;
-    }
+  if (
+    (ch.state === CharacterState.IDLE_CASUAL_TYPE || ch.state === CharacterState.IDLE_READING) &&
+    ch.frameTimer >= TYPE_FRAME_DURATION_SEC
+  ) {
+    ch.frameTimer -= TYPE_FRAME_DURATION_SEC;
+    ch.frame = (ch.frame + 1) % 2;
   } else {
     ch.frame = 0;
   }
