@@ -37,11 +37,11 @@ function ToolLine({ tool }: { tool: ToolActivity }) {
   return (
     <span
       style={{
-        fontSize: '22px',
+        fontSize: '12px',
         opacity: tool.done ? 0.5 : 0.8,
         display: 'flex',
         alignItems: 'center',
-        gap: 5,
+        gap: 4,
       }}
     >
       <ToolDot tool={tool} />
@@ -68,9 +68,9 @@ export function DebugView({
       <div
         key={id}
         style={{
-          border: `2px solid ${isSelected ? '#5a8cff' : '#4a4a6a'}`,
+          border: `1px solid ${isSelected ? 'rgba(90, 140, 255, 0.5)' : 'rgba(74, 74, 106, 0.4)'}`,
           borderRadius: 0,
-          padding: '6px 8px',
+          padding: '4px 6px',
           background: isSelected
             ? 'var(--vscode-list-activeSelectionBackground, rgba(255,255,255,0.04))'
             : undefined,
@@ -81,8 +81,8 @@ export function DebugView({
             onClick={() => onSelectAgent(id)}
             style={{
               borderRadius: 0,
-              padding: '6px 10px',
-              fontSize: '26px',
+              padding: '3px 7px',
+              fontSize: '13px',
               background: isSelected ? 'rgba(90, 140, 255, 0.25)' : undefined,
               color: isSelected ? '#fff' : undefined,
               fontWeight: isSelected ? 'bold' : undefined,
@@ -94,8 +94,8 @@ export function DebugView({
             onClick={() => vscode.postMessage({ type: 'closeAgent', id })}
             style={{
               borderRadius: 0,
-              padding: '6px 8px',
-              fontSize: '26px',
+              padding: '3px 5px',
+              fontSize: '13px',
               opacity: 0.7,
               background: isSelected ? 'rgba(90, 140, 255, 0.25)' : undefined,
               color: isSelected ? '#fff' : undefined,
@@ -140,11 +140,11 @@ export function DebugView({
             {status === 'waiting' && !hasActiveTools && (
               <span
                 style={{
-                  fontSize: '22px',
+                  fontSize: '12px',
                   opacity: 0.85,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 5,
+                  gap: 4,
                 }}
               >
                 <span
@@ -180,7 +180,7 @@ export function DebugView({
       }}
     >
       {/* Top padding so cards don't overlap the floating toolbar */}
-      <div style={{ padding: '12px 12px 12px', fontSize: '28px' }}>
+      <div style={{ padding: '8px 8px 8px', fontSize: '13px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {agents.map(renderAgentCard)}
         </div>

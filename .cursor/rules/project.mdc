@@ -1,0 +1,142 @@
+---
+description: Project context for Cursor Pixel Agents
+globs:
+alwaysApply: true
+---
+
+# Cursor Pixel Agents
+
+VS Code / Cursor extension that visualizes AI agent activity as animated pixel-art characters in an isometric office. Agents appear as characters that walk to desks, type, read, and spawn sub-agents — all rendered on a Canvas 2D surface inside a webview panel.
+
+## Architecture
+
+```
+Extension Host (src/)          Webview (webview-ui/src/)
+─────────────────────          ─────────────────────────
+extension.ts (entry)           main.tsx → App.tsx
+panelProvider.ts ──postMessage──► useExtensionMessages.ts
+cursorWatcher.ts                   ▼
+transcriptParser.ts            OfficeState (imperative)
+assetLoader.ts                 GameLoop + Renderer (Canvas 2D)
+layoutPersistence.ts           EditorState (edit mode)
+hooksInstaller.ts
+```
+
+### Data Flow
+
+1. **CursorWatcher** detects agent activity via transcript JSONL files or Cursor hooks
+2. **transcriptParser** / hooks state → activity type (reading, editing, running, etc.)
+3. **panelProvider** maps activity → tool name, sends `agentCreated`/`agentToolStart`/`agentStatus` messages to webview
+4. **useExtensionMessages** updates React state and imperatively updates **OfficeState**
+5. **OfficeState** manages characters (FSM: idle → walk → type → wander), seats, pathfinding on a tile map
+6. **GameLoop** drives `requestAnimationFrame`; **Renderer** draws sprites to Canvas 2D
+
+### Agent Detection Modes
+
+| Mode | Source | Mechanism |
+|------|--------|-----------|
+| Transcript | `~/.cursor/projects/<sanitized-ws>/agent-transcripts/*.jsonl` | File watch + regex parsing |
+| Hooks | `~/.cursor/hooks.json` → `/tmp/cursor-pixel-agents-state.json` | Bash hook writes JSON; extension polls |
+
+Hooks mode is more accurate (real tool names). Transcript mode uses regex heuristics on assistant text.
+
+## Key Modules
+
+### Extension (`src/`)
+
+| File | Responsibility |
+|------|---------------|
+| `extension.ts` | Activation, status bar, commands registration |
+| `panelProvider.ts` | WebviewViewProvider, agent state map, layout/asset orchestration |
+| `cursorWatcher.ts` | Transcript dir discovery, file watching, hooks polling |
+| `transcriptParser.ts` | JSONL line → `AgentActivityType` via regex |
+| `assetLoader.ts` | PNG → hex color arrays, furniture manifests; sends via postMessage |
+| `layoutPersistence.ts` | Read/write `~/.cursor-pixel-agents/layout.json`; own-write detection |
+| `hooksInstaller.ts` | Installs/removes hook entries in `~/.cursor/hooks.json` |
+
+### Webview (`webview-ui/src/`)
+
+| Path | Responsibility |
+|------|---------------|
+| `hooks/useExtensionMessages.ts` | Central message handler; bridges extension ↔ OfficeState |
+| `office/engine/officeState.ts` | Characters, seats, furniture, pathfinding, sub-agents |
+| `office/engine/characters.ts` | Character FSM (idle, walk, type, wander, seat rest) |
+| `office/engine/renderer.ts` | Canvas 2D tile/furniture/character rendering |
+| `office/engine/gameLoop.ts` | `requestAnimationFrame` loop with delta-time cap |
+| `office/editor/editorState.ts` | Edit mode: tool selection, undo/redo |
+| `office/layout/tileMap.ts` | Tile-based pathfinding |
+| `office/layout/furnitureCatalog.ts` | Furniture definitions and dynamic catalog |
+
+## Communication Protocol
+
+### Extension → Webview (postMessage)
+
+`layoutLoaded`, `settingsLoaded`, `agentCreated`, `agentToolStart`, `agentToolsClear`, `agentStatus`, `agentToolPermission`, `agentToolPermissionClear`, `subagentClear`, `characterSpritesLoaded`, `floorTilesLoaded`, `wallTilesLoaded`, `furnitureAssetsLoaded`
+
+### Webview → Extension (vscode.postMessage)
+
+`webviewReady`, `saveAgentSeats`, `saveLayout`, `saveViewState`, `setSoundEnabled`, `exportLayout`, `importLayout`
+
+**Unhandled (dead/planned):** `focusAgent`, `closeAgent`, `openClaude`, `openSessionsFolder`
+
+## Build & Run
+
+```bash
+npm install && cd webview-ui && npm install && cd ..
+npm run build          # type-check + esbuild + vite build
+npm run watch          # esbuild watch (extension only)
+npm run package        # build + vsce package
+```
+
+Press **F5** to launch Extension Development Host. Open "Pixel Office" panel or press `Cmd+Shift+.`.
+
+- Extension bundled with **esbuild** → `dist/extension.js` (CJS)
+- Webview bundled with **Vite** → `dist/webview/`
+- Assets copied from `webview-ui/public/assets/` → `dist/assets/` during build
+
+## Naming Conventions
+
+| Thing | Convention | Example |
+|-------|-----------|---------|
+| Extension commands | `cursorPixelAgents.<action>` | `cursorPixelAgents.show` |
+| Message types | `camelCase` | `agentToolStart` |
+| Furniture IDs | `UPPER_SNAKE_CASE` | `DESK_FRONT`, `WOODEN_CHAIR` |
+| Sub-agent IDs | Negative integers | `-1`, `-2` (from `nextSubagentId`) |
+
+## State Management
+
+- **OfficeState**: Plain class, mutated imperatively by message handlers. Stored in a React ref — NOT reactive.
+- **EditorState**: Separate class for edit mode (undo/redo stack, tool selection).
+- **React state**: UI concerns only (`agents`, `agentTools`, `zoom`, `layoutReady`).
+- **Persistence**: Layout → `~/.cursor-pixel-agents/layout.json` (with `layoutRevision` for auto-reset on version bump). View state / sound → VS Code `workspaceState` / `globalState`.
+
+## Landmines
+
+1. **Asset load order matters**: `furnitureAssetsLoaded` must arrive before `layoutLoaded` so `buildDynamicCatalog` runs first. Order is implicit, not enforced.
+
+2. **Transcript dir discovery is fragile**: Path is sanitized via `wsPath.replace(/[^a-zA-Z0-9-]/g, '-')`. Symlinks, casing differences, or unusual paths can break matching.
+
+3. **Layout edits block external updates**: `layoutLoaded` is skipped when `isEditDirty?.()` is true. External changes during edit mode are silently dropped.
+
+4. **Duplicate `FurnitureAsset` type**: Defined in both `assetLoader.ts` (backend) and `useExtensionMessages.ts` (frontend) with slightly different shapes. Risk of drift.
+
+5. **`/tmp/cursor-pixel-agents-state.json` is hardcoded**: Hooks mode won't work on Windows where `/tmp` may not exist.
+
+6. **No message validation**: Malformed postMessage payloads can cause runtime errors in both directions.
+
+7. **`existingAgents` message type**: Handled in webview but never sent by backend — dead code.
+
+8. **`retainContextWhenHidden: true`**: If webview is disposed anyway, all in-memory state (agents, characters) is lost and not restored.
+
+## Tech Stack
+
+| Layer | Stack |
+|-------|-------|
+| Extension | TypeScript, VS Code Extension API, esbuild, pngjs |
+| Webview | React 19, Vite 7, TypeScript 5.9, Canvas 2D |
+| Assets | PNG sprites, JSON manifests |
+| Hooks | Bash script, JSON state file |
+
+## No Tests
+
+There are no test files or test framework configured. No Jest, Vitest, or similar.

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { playDoneSound, setSoundEnabled } from '../notificationSound.js';
 import type { OfficeState } from '../office/engine/officeState.js';
+import type { ViewState } from './useEditorActions.js';
 import { setFloorSprites } from '../office/floorTiles.js';
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
@@ -41,11 +42,6 @@ export interface FurnitureAsset {
   frame?: number;
 }
 
-export interface WorkspaceFolder {
-  name: string;
-  path: string;
-}
-
 export interface ExtensionMessageState {
   agents: number[];
   selectedAgent: number | null;
@@ -56,7 +52,6 @@ export interface ExtensionMessageState {
   layoutReady: boolean;
   layoutWasReset: boolean;
   loadedAssets?: { catalog: FurnitureAsset[]; sprites: Record<string, string[][]> };
-  workspaceFolders: WorkspaceFolder[];
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -72,6 +67,7 @@ export function useExtensionMessages(
   getOfficeState: () => OfficeState,
   onLayoutLoaded?: (layout: OfficeLayout) => void,
   isEditDirty?: () => boolean,
+  restoreViewState?: (viewState: ViewState) => void,
 ): ExtensionMessageState {
   const [agents, setAgents] = useState<number[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
@@ -86,7 +82,6 @@ export function useExtensionMessages(
   const [loadedAssets, setLoadedAssets] = useState<
     { catalog: FurnitureAsset[]; sprites: Record<string, string[][]> } | undefined
   >();
-  const [workspaceFolders, setWorkspaceFolders] = useState<WorkspaceFolder[]>([]);
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -136,9 +131,11 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentCreated') {
         const id = msg.id as number;
         const folderName = msg.folderName as string | undefined;
+        const composerMode = msg.composerMode as 'agent' | 'ask' | 'edit' | undefined;
+        const isBackgroundAgent = msg.isBackgroundAgent as boolean | undefined;
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]));
         setSelectedAgent(id);
-        os.addAgent(id, undefined, undefined, undefined, undefined, folderName);
+        os.addAgent(id, undefined, undefined, undefined, undefined, folderName, composerMode, isBackgroundAgent);
         saveAgentSeats(os);
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number;
@@ -261,10 +258,14 @@ export function useExtensionMessages(
           }
           return { ...prev, [id]: status };
         });
-        os.setAgentActive(id, status === 'active');
-        if (status === 'waiting') {
+        if (status === 'active') {
+          os.setAgentActive(id, true);
+        } else if (status === 'waiting') {
+          os.setAgentCompleted(id);
           os.showWaitingBubble(id);
           playDoneSound();
+        } else {
+          os.setAgentActive(id, false);
         }
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number;
@@ -378,12 +379,12 @@ export function useExtensionMessages(
         const sets = msg.sets as string[][][][];
         console.log(`[Webview] Received ${sets.length} wall tile set(s)`);
         setWallSprites(sets);
-      } else if (msg.type === 'workspaceFolders') {
-        const folders = msg.folders as WorkspaceFolder[];
-        setWorkspaceFolders(folders);
       } else if (msg.type === 'settingsLoaded') {
         const soundOn = msg.soundEnabled as boolean;
         setSoundEnabled(soundOn);
+        if (msg.viewState) {
+          restoreViewState?.(msg.viewState as ViewState);
+        }
       } else if (msg.type === 'furnitureAssetsLoaded') {
         try {
           const catalog = msg.catalog as FurnitureAsset[];
@@ -412,6 +413,5 @@ export function useExtensionMessages(
     layoutReady,
     layoutWasReset,
     loadedAssets,
-    workspaceFolders,
   };
 }

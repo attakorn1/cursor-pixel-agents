@@ -14,37 +14,38 @@ import type { FloorColor, TileType as TileTypeVal } from '../types.js';
 import { EditTool } from '../types.js';
 
 const btnStyle: React.CSSProperties = {
-  padding: '3px 8px',
-  fontSize: '22px',
-  background: 'rgba(255, 255, 255, 0.08)',
-  color: 'rgba(255, 255, 255, 0.7)',
-  border: '2px solid transparent',
+  padding: '2px 6px',
+  fontSize: '12px',
+  background: 'rgba(255, 255, 255, 0.05)',
+  color: 'rgba(255, 255, 255, 0.6)',
+  border: '1px solid transparent',
   borderRadius: 0,
   cursor: 'pointer',
+  letterSpacing: '0.3px',
 };
 
 const activeBtnStyle: React.CSSProperties = {
   ...btnStyle,
-  background: 'rgba(90, 140, 255, 0.25)',
-  color: 'rgba(255, 255, 255, 0.9)',
-  border: '2px solid #5a8cff',
+  background: 'rgba(90, 140, 255, 0.2)',
+  color: 'rgba(255, 255, 255, 0.85)',
+  border: '1px solid rgba(90, 140, 255, 0.5)',
 };
 
 const tabStyle: React.CSSProperties = {
-  padding: '2px 6px',
-  fontSize: '20px',
+  padding: '1px 5px',
+  fontSize: '11px',
   background: 'transparent',
-  color: 'rgba(255, 255, 255, 0.5)',
-  border: '2px solid transparent',
+  color: 'rgba(255, 255, 255, 0.45)',
+  border: '1px solid transparent',
   borderRadius: 0,
   cursor: 'pointer',
 };
 
 const activeTabStyle: React.CSSProperties = {
   ...tabStyle,
-  background: 'rgba(255, 255, 255, 0.08)',
-  color: 'rgba(255, 255, 255, 0.8)',
-  border: '2px solid #5a8cff',
+  background: 'rgba(255, 255, 255, 0.06)',
+  color: 'rgba(255, 255, 255, 0.75)',
+  border: '1px solid rgba(90, 140, 255, 0.5)',
 };
 
 interface EditorToolbarProps {
@@ -80,7 +81,6 @@ function FloorPatternPreview({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const displaySize = 32;
-  const tileZoom = 2;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -99,8 +99,8 @@ function FloorPatternPreview({
     }
 
     const sprite = getColorizedFloorSprite(patternIndex, color);
-    const cached = getCachedSprite(sprite, tileZoom);
-    ctx.drawImage(cached, 0, 0);
+    const cached = getCachedSprite(sprite);
+    ctx.drawImage(cached, 0, 0, cached.width, cached.height, 0, 0, displaySize, displaySize);
   }, [patternIndex, color]);
 
   return (
@@ -111,7 +111,7 @@ function FloorPatternPreview({
         width: displaySize,
         height: displaySize,
         padding: 0,
-        border: selected ? '2px solid #5a8cff' : '2px solid #4a4a6a',
+        border: selected ? '1px solid rgba(90, 140, 255, 0.6)' : '1px solid rgba(74, 74, 106, 0.4)',
         borderRadius: 0,
         cursor: 'pointer',
         overflow: 'hidden',
@@ -142,7 +142,6 @@ function WallSetPreview({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const displayW = 32;
   const displayH = 64;
-  const previewZoom = 2;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -164,8 +163,8 @@ function WallSetPreview({
     // Colorize the preview sprite using the same colorize path as rendering
     const cacheKey = `wall-preview-${setIndex}-${color.h}-${color.s}-${color.b}-${color.c}`;
     const colorized = getColorizedSprite(cacheKey, sprite, { ...color, colorize: true });
-    const cached = getCachedSprite(colorized, previewZoom);
-    ctx.drawImage(cached, 0, 0);
+    const cached = getCachedSprite(colorized);
+    ctx.drawImage(cached, 0, 0, cached.width, cached.height, 0, 0, displayW, displayH);
   }, [setIndex, color]);
 
   return (
@@ -176,7 +175,7 @@ function WallSetPreview({
         width: displayW,
         height: displayH,
         padding: 0,
-        border: selected ? '2px solid #5a8cff' : '2px solid #4a4a6a',
+        border: selected ? '1px solid rgba(90, 140, 255, 0.6)' : '1px solid rgba(74, 74, 106, 0.4)',
         borderRadius: 0,
         cursor: 'pointer',
         overflow: 'hidden',
@@ -206,7 +205,7 @@ function ColorSlider({
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
       <span
-        style={{ fontSize: '20px', color: '#999', width: 28, textAlign: 'right', flexShrink: 0 }}
+        style={{ fontSize: '11px', color: '#999', width: 16, textAlign: 'right', flexShrink: 0 }}
       >
         {label}
       </span>
@@ -216,10 +215,10 @@ function ColorSlider({
         max={max}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        style={{ flex: 1, height: 12, accentColor: 'rgba(90, 140, 255, 0.8)' }}
+        style={{ flex: 1, height: 8, accentColor: 'rgba(90, 140, 255, 0.8)' }}
       />
       <span
-        style={{ fontSize: '20px', color: '#999', width: 48, textAlign: 'right', flexShrink: 0 }}
+        style={{ fontSize: '11px', color: '#999', width: 32, textAlign: 'right', flexShrink: 0 }}
       >
         {value}
       </span>
@@ -318,18 +317,18 @@ export function EditorToolbar({
     <div
       style={{
         position: 'absolute',
-        bottom: 68,
-        left: 10,
+        bottom: 38,
+        left: 6,
         zIndex: 50,
-        background: '#1e1e2e',
-        border: '2px solid #4a4a6a',
+        background: 'rgba(30, 30, 46, 0.7)',
+        border: '1px solid rgba(74, 74, 106, 0.4)',
         borderRadius: 0,
-        padding: '6px 8px',
+        padding: '4px 6px',
         display: 'flex',
         flexDirection: 'column-reverse',
-        gap: 6,
-        boxShadow: '2px 2px 0px #0a0a14',
-        maxWidth: 'calc(100vw - 20px)',
+        gap: 4,
+        backdropFilter: 'blur(4px)',
+        maxWidth: 'calc(100vw - 12px)',
       }}
     >
       {/* Tool row — at the bottom */}
@@ -393,8 +392,8 @@ export function EditorToolbar({
                 flexDirection: 'column',
                 gap: 3,
                 padding: '4px 6px',
-                background: '#181828',
-                border: '2px solid #4a4a6a',
+                background: 'rgba(24, 24, 40, 0.8)',
+                border: '1px solid rgba(74, 74, 106, 0.35)',
                 borderRadius: 0,
               }}
             >
@@ -474,8 +473,8 @@ export function EditorToolbar({
                 flexDirection: 'column',
                 gap: 3,
                 padding: '4px 6px',
-                background: '#181828',
-                border: '2px solid #4a4a6a',
+                background: 'rgba(24, 24, 40, 0.8)',
+                border: '1px solid rgba(74, 74, 106, 0.35)',
                 borderRadius: 0,
               }}
             >
@@ -577,7 +576,7 @@ export function EditorToolbar({
             }}
           >
             {categoryItems.map((entry) => {
-              const cached = getCachedSprite(entry.sprite, 2);
+              const cached = getCachedSprite(entry.sprite);
               const isSelected = selectedFurnitureType === entry.type;
               return (
                 <button
@@ -588,7 +587,7 @@ export function EditorToolbar({
                     width: thumbSize,
                     height: thumbSize,
                     background: '#2A2A3A',
-                    border: isSelected ? '2px solid #5a8cff' : '2px solid #4a4a6a',
+                    border: isSelected ? '1px solid rgba(90, 140, 255, 0.6)' : '1px solid rgba(74, 74, 106, 0.4)',
                     borderRadius: 0,
                     cursor: 'pointer',
                     padding: 0,
@@ -612,7 +611,17 @@ export function EditorToolbar({
                       ctx.clearRect(0, 0, thumbSize, thumbSize);
                       const dw = cached.width * scale;
                       const dh = cached.height * scale;
-                      ctx.drawImage(cached, (thumbSize - dw) / 2, (thumbSize - dh) / 2, dw, dh);
+                      ctx.drawImage(
+                        cached,
+                        0,
+                        0,
+                        cached.width,
+                        cached.height,
+                        (thumbSize - dw) / 2,
+                        (thumbSize - dh) / 2,
+                        dw,
+                        dh,
+                      );
                     }}
                     style={{ width: thumbSize, height: thumbSize }}
                   />
@@ -636,7 +645,7 @@ export function EditorToolbar({
             </button>
             {selectedFurnitureColor && (
               <button
-                style={{ ...btnStyle, fontSize: '20px', padding: '2px 6px' }}
+                style={{ ...btnStyle, fontSize: '11px', padding: '1px 5px' }}
                 onClick={() => onSelectedFurnitureColorChange(null)}
                 title="Remove color (restore original)"
               >
@@ -651,8 +660,8 @@ export function EditorToolbar({
                 flexDirection: 'column',
                 gap: 3,
                 padding: '4px 6px',
-                background: '#181828',
-                border: '2px solid #4a4a6a',
+                background: 'rgba(24, 24, 40, 0.8)',
+                border: '1px solid rgba(74, 74, 106, 0.35)',
                 borderRadius: 0,
               }}
             >
@@ -710,7 +719,7 @@ export function EditorToolbar({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
-                  fontSize: '20px',
+                  fontSize: '11px',
                   color: '#999',
                   cursor: 'pointer',
                 }}

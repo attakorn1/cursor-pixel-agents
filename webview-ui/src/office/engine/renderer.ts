@@ -34,7 +34,9 @@ import {
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import {
+  BUBBLE_COFFEE_SPRITE,
   BUBBLE_PERMISSION_SPRITE,
+  BUBBLE_THINKING_SPRITE,
   BUBBLE_WAITING_SPRITE,
   getCharacterSprites,
 } from '../sprites/spriteData.js';
@@ -46,9 +48,9 @@ import type {
   SpriteData,
   TileType as TileTypeVal,
 } from '../types.js';
-import { CharacterState, TILE_SIZE, TileType } from '../types.js';
+import { TILE_SIZE, TileType } from '../types.js';
 import { getWallInstances, hasWallSprites, wallColorToHex } from '../wallTiles.js';
-import { getCharacterSprite } from './characters.js';
+import { getCharacterSprite, isSittingState } from './characters.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 
 // ── Render functions ────────────────────────────────────────────
@@ -85,7 +87,10 @@ export function renderTileGrid(
         } else {
           ctx.fillStyle = FALLBACK_FLOOR_COLOR;
         }
-        ctx.fillRect(offsetX + c * s, offsetY + r * s, s, s);
+        const dx = Math.round(offsetX + c * s);
+        const dy = Math.round(offsetY + r * s);
+        const ds = Math.round(s);
+        ctx.fillRect(dx, dy, ds, ds);
         continue;
       }
 
@@ -93,8 +98,12 @@ export function renderTileGrid(
       const colorIdx = r * layoutCols + c;
       const color = tileColors?.[colorIdx] ?? { h: 0, s: 0, b: 0, c: 0 };
       const sprite = getColorizedFloorSprite(tile, color);
-      const cached = getCachedSprite(sprite, zoom);
-      ctx.drawImage(cached, offsetX + c * s, offsetY + r * s);
+      const cached = getCachedSprite(sprite);
+      const dx = Math.round(offsetX + c * s);
+      const dy = Math.round(offsetY + r * s);
+      const dw = Math.round(cached.width * zoom);
+      const dh = Math.round(cached.height * zoom);
+      ctx.drawImage(cached, 0, 0, cached.width, cached.height, dx, dy, dw, dh);
     }
   }
 }
@@ -118,17 +127,19 @@ export function renderScene(
 
   // Furniture
   for (const f of furniture) {
-    const cached = getCachedSprite(f.sprite, zoom);
-    const fx = offsetX + f.x * zoom;
-    const fy = offsetY + f.y * zoom;
+    const cached = getCachedSprite(f.sprite);
+    const fx = Math.round(offsetX + f.x * zoom);
+    const fy = Math.round(offsetY + f.y * zoom);
+    const fw = Math.round(cached.width * zoom);
+    const fh = Math.round(cached.height * zoom);
     if (f.mirrored) {
       drawables.push({
         zY: f.zY,
         draw: (c) => {
           c.save();
-          c.translate(fx + cached.width, fy);
+          c.translate(fx + fw, fy);
           c.scale(-1, 1);
-          c.drawImage(cached, 0, 0);
+          c.drawImage(cached, 0, 0, cached.width, cached.height, 0, 0, fw, fh);
           c.restore();
         },
       });
@@ -136,7 +147,7 @@ export function renderScene(
       drawables.push({
         zY: f.zY,
         draw: (c) => {
-          c.drawImage(cached, fx, fy);
+          c.drawImage(cached, 0, 0, cached.width, cached.height, fx, fy, fw, fh);
         },
       });
     }
@@ -146,12 +157,13 @@ export function renderScene(
   for (const ch of characters) {
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
     const spriteData = getCharacterSprite(ch, sprites);
-    const cached = getCachedSprite(spriteData, zoom);
-    // Sitting offset: shift character down when seated so they visually sit in the chair
-    const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+    const cached = getCachedSprite(spriteData);
+    const sittingOffset = isSittingState(ch.state) ? CHARACTER_SITTING_OFFSET_PX : 0;
+    const charW = Math.round(cached.width * zoom);
+    const charH = Math.round(cached.height * zoom);
     // Anchor at bottom-center of character — round to integer device pixels
-    const drawX = Math.round(offsetX + ch.x * zoom - cached.width / 2);
-    const drawY = Math.round(offsetY + (ch.y + sittingOffset) * zoom - cached.height);
+    const drawX = Math.round(offsetX + ch.x * zoom - charW / 2);
+    const drawY = Math.round(offsetY + (ch.y + sittingOffset) * zoom - charH);
 
     // Sort characters by bottom of their tile (not center) so they render
     // in front of same-row furniture (e.g. chairs) but behind furniture
@@ -179,15 +191,27 @@ export function renderScene(
     if (isSelected || isHovered) {
       const outlineAlpha = isSelected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
       const outlineData = getOutlineSprite(spriteData);
-      const outlineCached = getCachedSprite(outlineData, zoom);
-      const olDrawX = drawX - zoom; // 1 sprite-pixel offset, scaled
-      const olDrawY = drawY - zoom; // outline follows sitting offset via drawY
+      const outlineCached = getCachedSprite(outlineData);
+      const olW = Math.round(outlineCached.width * zoom);
+      const olH = Math.round(outlineCached.height * zoom);
+      const olDrawX = Math.round(drawX - zoom);
+      const olDrawY = Math.round(drawY - zoom);
       drawables.push({
         zY: charZY - OUTLINE_Z_SORT_OFFSET, // sort just before character
         draw: (c) => {
           c.save();
           c.globalAlpha = outlineAlpha;
-          c.drawImage(outlineCached, olDrawX, olDrawY);
+          c.drawImage(
+            outlineCached,
+            0,
+            0,
+            outlineCached.width,
+            outlineCached.height,
+            olDrawX,
+            olDrawY,
+            olW,
+            olH,
+          );
           c.restore();
         },
       });
@@ -196,7 +220,7 @@ export function renderScene(
     drawables.push({
       zY: charZY,
       draw: (c) => {
-        c.drawImage(cached, drawX, drawY);
+        c.drawImage(cached, 0, 0, cached.width, cached.height, drawX, drawY, charW, charH);
       },
     });
   }
@@ -230,8 +254,9 @@ export function renderSeatIndicators(
     if (seat.seatCol !== hoveredTile.col || seat.seatRow !== hoveredTile.row) continue;
 
     const s = TILE_SIZE * zoom;
-    const x = offsetX + seat.seatCol * s;
-    const y = offsetY + seat.seatRow * s;
+    const x = Math.round(offsetX + seat.seatCol * s);
+    const y = Math.round(offsetY + seat.seatRow * s);
+    const sw = Math.round(s);
 
     if (selectedChar.seatId === uid) {
       // Selected agent's own seat — blue
@@ -243,7 +268,7 @@ export function renderSeatIndicators(
       // Busy (assigned to another agent) — red
       ctx.fillStyle = SEAT_BUSY_COLOR;
     }
-    ctx.fillRect(x, y, s, s);
+    ctx.fillRect(x, y, sw, sw);
     break;
   }
 }
@@ -263,17 +288,21 @@ export function renderGridOverlay(
   ctx.strokeStyle = GRID_LINE_COLOR;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  // Vertical lines — offset by 0.5 for crisp 1px lines
+  // Vertical lines — snap to integer pixels + 0.5 for crisp 1px lines
   for (let c = 0; c <= cols; c++) {
-    const x = offsetX + c * s + 0.5;
-    ctx.moveTo(x, offsetY);
-    ctx.lineTo(x, offsetY + rows * s);
+    const x = Math.round(offsetX + c * s) + 0.5;
+    const y0 = Math.round(offsetY);
+    const y1 = Math.round(offsetY + rows * s);
+    ctx.moveTo(x, y0);
+    ctx.lineTo(x, y1);
   }
   // Horizontal lines
   for (let r = 0; r <= rows; r++) {
-    const y = offsetY + r * s + 0.5;
-    ctx.moveTo(offsetX, y);
-    ctx.lineTo(offsetX + cols * s, y);
+    const y = Math.round(offsetY + r * s) + 0.5;
+    const x0 = Math.round(offsetX);
+    const x1 = Math.round(offsetX + cols * s);
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x1, y);
   }
   ctx.stroke();
 
@@ -286,7 +315,10 @@ export function renderGridOverlay(
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (tileMap[r]?.[c] === TileType.VOID) {
-          ctx.strokeRect(offsetX + c * s + 0.5, offsetY + r * s + 0.5, s - 1, s - 1);
+          const rx = Math.round(offsetX + c * s) + 0.5;
+          const ry = Math.round(offsetY + r * s) + 0.5;
+          const rw = Math.round(s) - 1;
+          ctx.strokeRect(rx, ry, rw, rw);
         }
       }
     }
@@ -322,17 +354,18 @@ export function renderGhostBorder(
   }
 
   for (const { c, r } of ghostTiles) {
-    const x = offsetX + c * s;
-    const y = offsetY + r * s;
+    const x = Math.round(offsetX + c * s);
+    const y = Math.round(offsetY + r * s);
+    const sw = Math.round(s);
     const isHovered = c === ghostHoverCol && r === ghostHoverRow;
     if (isHovered) {
       ctx.fillStyle = GHOST_BORDER_HOVER_FILL;
-      ctx.fillRect(x, y, s, s);
+      ctx.fillRect(x, y, sw, sw);
     }
     ctx.strokeStyle = isHovered ? GHOST_BORDER_HOVER_STROKE : GHOST_BORDER_STROKE;
     ctx.lineWidth = 1;
     ctx.setLineDash(VOID_TILE_DASH_PATTERN);
-    ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+    ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, sw - 1), Math.max(0, sw - 1));
   }
 
   ctx.restore();
@@ -349,24 +382,25 @@ export function renderGhostPreview(
   zoom: number,
   mirrored: boolean = false,
 ): void {
-  const cached = getCachedSprite(sprite, zoom);
-  const x = offsetX + col * TILE_SIZE * zoom;
-  const y = offsetY + row * TILE_SIZE * zoom;
+  const cached = getCachedSprite(sprite);
+  const w = Math.round(cached.width * zoom);
+  const h = Math.round(cached.height * zoom);
+  const x = Math.round(offsetX + col * TILE_SIZE * zoom);
+  const y = Math.round(offsetY + row * TILE_SIZE * zoom);
   ctx.save();
   ctx.globalAlpha = GHOST_PREVIEW_SPRITE_ALPHA;
   if (mirrored) {
-    ctx.translate(x + cached.width, y);
+    ctx.translate(x + w, y);
     ctx.scale(-1, 1);
-    ctx.drawImage(cached, 0, 0);
+    ctx.drawImage(cached, 0, 0, cached.width, cached.height, 0, 0, w, h);
   } else {
-    ctx.drawImage(cached, x, y);
+    ctx.drawImage(cached, 0, 0, cached.width, cached.height, x, y, w, h);
   }
-  // Tint overlay — reset transform for correct fill position
   ctx.restore();
   ctx.save();
   ctx.globalAlpha = GHOST_PREVIEW_TINT_ALPHA;
   ctx.fillStyle = valid ? GHOST_VALID_TINT : GHOST_INVALID_TINT;
-  ctx.fillRect(x, y, cached.width, cached.height);
+  ctx.fillRect(x, y, w, h);
   ctx.restore();
 }
 
@@ -381,13 +415,15 @@ export function renderSelectionHighlight(
   zoom: number,
 ): void {
   const s = TILE_SIZE * zoom;
-  const x = offsetX + col * s;
-  const y = offsetY + row * s;
+  const x = Math.round(offsetX + col * s) + 1;
+  const y = Math.round(offsetY + row * s) + 1;
+  const rw = Math.max(0, Math.round(w * s) - 2);
+  const rh = Math.max(0, Math.round(h * s) - 2);
   ctx.save();
   ctx.strokeStyle = SELECTION_HIGHLIGHT_COLOR;
   ctx.lineWidth = 2;
   ctx.setLineDash(SELECTION_DASH_PATTERN);
-  ctx.strokeRect(x + 1, y + 1, w * s - 2, h * s - 2);
+  ctx.strokeRect(x, y, rw, rh);
   ctx.restore();
 }
 
@@ -489,28 +525,39 @@ export function renderBubbles(
   for (const ch of characters) {
     if (!ch.bubbleType) continue;
 
-    const sprite =
-      ch.bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE;
+    let sprite: SpriteData;
+    switch (ch.bubbleType) {
+      case 'permission':
+        sprite = BUBBLE_PERMISSION_SPRITE;
+        break;
+      case 'waiting':
+        sprite = BUBBLE_WAITING_SPRITE;
+        break;
+      case 'thinking':
+        sprite = BUBBLE_THINKING_SPRITE;
+        break;
+      case 'coffee':
+        sprite = BUBBLE_COFFEE_SPRITE;
+        break;
+    }
 
-    // Compute opacity: permission = full, waiting = fade in last 0.5s
     let alpha = 1.0;
     if (ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC;
     }
 
-    const cached = getCachedSprite(sprite, zoom);
-    // Position: centered above the character's head
-    // Character is anchored bottom-center at (ch.x, ch.y), sprite is 16x24
-    // Place bubble above head with a small gap; follow sitting offset
-    const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0;
-    const bubbleX = Math.round(offsetX + ch.x * zoom - cached.width / 2);
+    const cached = getCachedSprite(sprite);
+    const bubbleW = Math.round(cached.width * zoom);
+    const bubbleH = Math.round(cached.height * zoom);
+    const sittingOff = isSittingState(ch.state) ? BUBBLE_SITTING_OFFSET_PX : 0;
+    const bubbleX = Math.round(offsetX + ch.x * zoom - bubbleW / 2);
     const bubbleY = Math.round(
-      offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom - cached.height - 1 * zoom,
+      offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom - bubbleH - zoom,
     );
 
     ctx.save();
     if (alpha < 1.0) ctx.globalAlpha = alpha;
-    ctx.drawImage(cached, bubbleX, bubbleY);
+    ctx.drawImage(cached, 0, 0, cached.width, cached.height, bubbleX, bubbleY, bubbleW, bubbleH);
     ctx.restore();
   }
 }
@@ -576,7 +623,7 @@ export function renderFrame(
   layoutCols?: number,
   layoutRows?: number,
 ): { offsetX: number; offsetY: number } {
-  // Clear
+  ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
   // Use layout dimensions (fallback to tileMap size)

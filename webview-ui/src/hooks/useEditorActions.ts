@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 
-import { LAYOUT_SAVE_DEBOUNCE_MS, ZOOM_MAX, ZOOM_MIN } from '../constants.js';
+import { LAYOUT_SAVE_DEBOUNCE_MS, VIEW_STATE_SAVE_DEBOUNCE_MS, ZOOM_MAX, ZOOM_MIN } from '../constants.js';
 import type { ExpandDirection } from '../office/editor/editorActions.js';
 import {
   canPlaceFurniture,
@@ -32,14 +32,23 @@ import { EditTool } from '../office/types.js';
 import { TileType } from '../office/types.js';
 import { vscode } from '../vscodeApi.js';
 
+export interface ViewState {
+  zoom: number;
+  panX: number;
+  panY: number;
+  lockView: boolean;
+}
+
 export interface EditorActions {
   isEditMode: boolean;
   editorTick: number;
   isDirty: boolean;
   zoom: number;
+  lockView: boolean;
   panRef: React.MutableRefObject<{ x: number; y: number }>;
   saveTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
   setLastSavedLayout: (layout: OfficeLayout) => void;
+  restoreViewState: (viewState: ViewState) => void;
   handleOpenClaude: () => void;
   handleToggleEditMode: () => void;
   handleToolChange: (tool: EditToolType) => void;
@@ -57,6 +66,8 @@ export interface EditorActions {
   handleReset: () => void;
   handleSave: () => void;
   handleZoomChange: (zoom: number) => void;
+  handleLockViewChange: () => void;
+  debouncedSaveViewState: () => void;
   handleEditorTileAction: (col: number, row: number) => void;
   handleEditorEraseAction: (col: number, row: number) => void;
   handleEditorSelectionChange: () => void;
@@ -71,14 +82,60 @@ export function useEditorActions(
   const [editorTick, setEditorTick] = useState(0);
   const [isDirty, setIsDirty] = useState(false);
   const [zoom, setZoom] = useState(defaultZoom);
+  const [lockView, setLockView] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewStateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panRef = useRef({ x: 0, y: 0 });
   const lastSavedLayoutRef = useRef<OfficeLayout | null>(null);
+  const lockViewRef = useRef(false);
+  const zoomRef = useRef(defaultZoom());
 
   // Called by useExtensionMessages on layoutLoaded to set the initial checkpoint
   const setLastSavedLayout = useCallback((layout: OfficeLayout) => {
     lastSavedLayoutRef.current = structuredClone(layout);
   }, []);
+
+  const debouncedSaveViewState = useCallback(() => {
+    if (viewStateSaveTimerRef.current) clearTimeout(viewStateSaveTimerRef.current);
+    viewStateSaveTimerRef.current = setTimeout(() => {
+      const viewState: ViewState = {
+        zoom: zoomRef.current,
+        panX: panRef.current.x,
+        panY: panRef.current.y,
+        lockView: lockViewRef.current,
+      };
+      vscode.postMessage({ type: 'saveViewState', viewState });
+    }, VIEW_STATE_SAVE_DEBOUNCE_MS);
+  }, []);
+
+  const saveViewStateImmediate = useCallback(() => {
+    if (viewStateSaveTimerRef.current) clearTimeout(viewStateSaveTimerRef.current);
+    const viewState: ViewState = {
+      zoom: zoomRef.current,
+      panX: panRef.current.x,
+      panY: panRef.current.y,
+      lockView: lockViewRef.current,
+    };
+    vscode.postMessage({ type: 'saveViewState', viewState });
+  }, []);
+
+  const restoreViewState = useCallback((vs: ViewState) => {
+    const clampedZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, vs.zoom));
+    setZoom(clampedZoom);
+    zoomRef.current = clampedZoom;
+    panRef.current = { x: vs.panX, y: vs.panY };
+    setLockView(vs.lockView);
+    lockViewRef.current = vs.lockView;
+  }, []);
+
+  const handleLockViewChange = useCallback(() => {
+    setLockView((prev) => {
+      const next = !prev;
+      lockViewRef.current = next;
+      saveViewStateImmediate();
+      return next;
+    });
+  }, [saveViewStateImmediate]);
 
   // Debounced layout save
   const saveLayout = useCallback((layout: OfficeLayout) => {
@@ -366,8 +423,11 @@ export function useEditorActions(
   }, []);
 
   const handleZoomChange = useCallback((newZoom: number) => {
-    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom)));
-  }, []);
+    const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+    setZoom(clamped);
+    zoomRef.current = clamped;
+    debouncedSaveViewState();
+  }, [debouncedSaveViewState]);
 
   const handleDragMove = useCallback(
     (uid: string, newCol: number, newRow: number) => {
@@ -608,9 +668,11 @@ export function useEditorActions(
     editorTick,
     isDirty,
     zoom,
+    lockView,
     panRef,
     saveTimerRef,
     setLastSavedLayout,
+    restoreViewState,
     handleOpenClaude,
     handleToggleEditMode,
     handleToolChange,
@@ -628,6 +690,8 @@ export function useEditorActions(
     handleReset,
     handleSave,
     handleZoomChange,
+    handleLockViewChange,
+    debouncedSaveViewState,
     handleEditorTileAction,
     handleEditorEraseAction,
     handleEditorSelectionChange,

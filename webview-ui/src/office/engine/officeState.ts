@@ -11,6 +11,7 @@ import {
   INACTIVE_SEAT_TIMER_MIN_SEC,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
   PALETTE_COUNT,
+  STATUS_VISIBLE_DURATION_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
@@ -31,7 +32,7 @@ import type {
   TileType as TileTypeVal,
 } from '../types.js';
 import { CharacterState, Direction, MATRIX_EFFECT_DURATION, TILE_SIZE } from '../types.js';
-import { createCharacter, updateCharacter } from './characters.js';
+import { clearIdleBubble, createCharacter, getStatusTextForTool, getWorkStateForTool, isSittingState, showStatus, updateCharacter } from './characters.js';
 import { matrixEffectSeeds } from './matrixEffect.js';
 
 export class OfficeState {
@@ -215,6 +216,8 @@ export class OfficeState {
     preferredSeatId?: string,
     skipSpawnEffect?: boolean,
     folderName?: string,
+    composerMode?: 'agent' | 'ask' | 'edit',
+    isBackgroundAgent?: boolean,
   ): void {
     if (this.characters.has(id)) return;
 
@@ -262,6 +265,12 @@ export class OfficeState {
     if (folderName) {
       ch.folderName = folderName;
     }
+    if (composerMode) {
+      ch.composerMode = composerMode;
+    }
+    if (isBackgroundAgent !== undefined) {
+      ch.isBackgroundAgent = isBackgroundAgent;
+    }
     if (!skipSpawnEffect) {
       ch.matrixEffect = 'spawn';
       ch.matrixEffectTimer = 0;
@@ -270,22 +279,25 @@ export class OfficeState {
     this.characters.set(id, ch);
   }
 
-  removeAgent(id: number): void {
-    const ch = this.characters.get(id);
-    if (!ch) return;
-    if (ch.matrixEffect === 'despawn') return; // already despawning
-    // Free seat and clear selection immediately
+  /** Free seat, clear selection, and start despawn animation. Returns false if already despawning. */
+  private startDespawn(ch: Character): boolean {
+    if (ch.matrixEffect === 'despawn') return false;
     if (ch.seatId) {
       const seat = this.seats.get(ch.seatId);
       if (seat) seat.assigned = false;
     }
-    if (this.selectedAgentId === id) this.selectedAgentId = null;
-    if (this.cameraFollowId === id) this.cameraFollowId = null;
-    // Start despawn animation instead of immediate delete
+    if (this.selectedAgentId === ch.id) this.selectedAgentId = null;
+    if (this.cameraFollowId === ch.id) this.cameraFollowId = null;
     ch.matrixEffect = 'despawn';
     ch.matrixEffectTimer = 0;
     ch.matrixEffectSeeds = matrixEffectSeeds();
     ch.bubbleType = null;
+    return true;
+  }
+
+  removeAgent(id: number): void {
+    const ch = this.characters.get(id);
+    if (ch) this.startDespawn(ch);
   }
 
   /** Find seat uid at a given tile position, or null */
@@ -321,8 +333,7 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
-      // Already at seat or no path — sit down
-      ch.state = CharacterState.TYPE;
+      ch.state = ch.isActive ? getWorkStateForTool(ch.currentTool) : CharacterState.IDLE_SITTING;
       ch.dir = seat.facingDir;
       ch.frame = 0;
       ch.frameTimer = 0;
@@ -348,8 +359,7 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
-      // Already at seat — sit down
-      ch.state = CharacterState.TYPE;
+      ch.state = ch.isActive ? getWorkStateForTool(ch.currentTool) : CharacterState.IDLE_SITTING;
       ch.dir = seat.facingDir;
       ch.frame = 0;
       ch.frameTimer = 0;
@@ -452,28 +462,10 @@ export class OfficeState {
     if (id === undefined) return;
 
     const ch = this.characters.get(id);
-    if (ch) {
-      if (ch.matrixEffect === 'despawn') {
-        // Already despawning — just clean up maps
-        this.subagentIdMap.delete(key);
-        this.subagentMeta.delete(id);
-        return;
-      }
-      if (ch.seatId) {
-        const seat = this.seats.get(ch.seatId);
-        if (seat) seat.assigned = false;
-      }
-      // Start despawn animation — keep character in map for rendering
-      ch.matrixEffect = 'despawn';
-      ch.matrixEffectTimer = 0;
-      ch.matrixEffectSeeds = matrixEffectSeeds();
-      ch.bubbleType = null;
-    }
-    // Clean up tracking maps immediately so keys don't collide
+    if (ch) this.startDespawn(ch);
+
     this.subagentIdMap.delete(key);
     this.subagentMeta.delete(id);
-    if (this.selectedAgentId === id) this.selectedAgentId = null;
-    if (this.cameraFollowId === id) this.cameraFollowId = null;
   }
 
   /** Remove all sub-agents belonging to a parent agent */
@@ -481,30 +473,13 @@ export class OfficeState {
     const toRemove: string[] = [];
     for (const [key, id] of this.subagentIdMap) {
       const meta = this.subagentMeta.get(id);
-      if (meta && meta.parentAgentId === parentAgentId) {
-        const ch = this.characters.get(id);
-        if (ch) {
-          if (ch.matrixEffect === 'despawn') {
-            // Already despawning — just clean up maps
-            this.subagentMeta.delete(id);
-            toRemove.push(key);
-            continue;
-          }
-          if (ch.seatId) {
-            const seat = this.seats.get(ch.seatId);
-            if (seat) seat.assigned = false;
-          }
-          // Start despawn animation
-          ch.matrixEffect = 'despawn';
-          ch.matrixEffectTimer = 0;
-          ch.matrixEffectSeeds = matrixEffectSeeds();
-          ch.bubbleType = null;
-        }
-        this.subagentMeta.delete(id);
-        if (this.selectedAgentId === id) this.selectedAgentId = null;
-        if (this.cameraFollowId === id) this.cameraFollowId = null;
-        toRemove.push(key);
-      }
+      if (!meta || meta.parentAgentId !== parentAgentId) continue;
+
+      const ch = this.characters.get(id);
+      if (ch) this.startDespawn(ch);
+
+      this.subagentMeta.delete(id);
+      toRemove.push(key);
     }
     for (const key of toRemove) {
       this.subagentIdMap.delete(key);
@@ -520,12 +495,20 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (ch) {
       ch.isActive = active;
-      if (!active) {
-        // Sentinel -1: signals turn just ended, skip next seat rest timer.
-        // Prevents the WALK handler from setting a 2-4 min rest on arrival.
+      if (active) {
+        clearIdleBubble(ch);
+        // If seated in idle, transition to working state
+        if (ch.state !== CharacterState.WALK) {
+          ch.state = getWorkStateForTool(ch.currentTool);
+          ch.frame = 0;
+          ch.frameTimer = 0;
+        }
+        showStatus(ch, getStatusTextForTool(ch.currentTool), STATUS_VISIBLE_DURATION_SEC);
+      } else {
         ch.seatTimer = -1;
         ch.path = [];
         ch.moveProgress = 0;
+        showStatus(ch, 'Idle', STATUS_VISIBLE_DURATION_SEC);
       }
       this.rebuildFurnitureInstances();
     }
@@ -603,6 +586,44 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (ch) {
       ch.currentTool = tool;
+      if (ch.isActive && ch.state !== CharacterState.WALK) {
+        if (tool) {
+          const workState = getWorkStateForTool(tool);
+          if (ch.state !== workState) {
+            ch.state = workState;
+            ch.frame = 0;
+            ch.frameTimer = 0;
+            ch.completedTimer = 0;
+            if (workState === CharacterState.WORK_THINKING) {
+              ch.bubbleType = 'thinking';
+              ch.bubbleTimer = 0;
+            } else if (ch.bubbleType === 'thinking') {
+              ch.bubbleType = null;
+              ch.bubbleTimer = 0;
+            }
+          }
+        }
+      }
+      if (tool && ch.isActive) {
+        showStatus(ch, getStatusTextForTool(tool), STATUS_VISIBLE_DURATION_SEC);
+      }
+    }
+  }
+
+  /** Transition an agent to the COMPLETED state */
+  setAgentCompleted(id: number): void {
+    const ch = this.characters.get(id);
+    if (ch) {
+      ch.isActive = false;
+      ch.state = CharacterState.COMPLETED;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+      ch.completedTimer = 0;
+      ch.path = [];
+      ch.moveProgress = 0;
+      clearIdleBubble(ch);
+      showStatus(ch, 'Done!', STATUS_VISIBLE_DURATION_SEC);
+      this.rebuildFurnitureInstances();
     }
   }
 
@@ -701,9 +722,7 @@ export class OfficeState {
     for (const ch of chars) {
       // Skip characters that are despawning
       if (ch.matrixEffect === 'despawn') continue;
-      // Character sprite is 16x24, anchored bottom-center
-      // Apply sitting offset to match visual position
-      const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+      const sittingOffset = isSittingState(ch.state) ? CHARACTER_SITTING_OFFSET_PX : 0;
       const anchorY = ch.y + sittingOffset;
       const left = ch.x - CHARACTER_HIT_HALF_WIDTH;
       const right = ch.x + CHARACTER_HIT_HALF_WIDTH;

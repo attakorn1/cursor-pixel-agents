@@ -1,7 +1,14 @@
 export {
+  clearIdleBubble,
   createCharacter,
   getCharacterSprite,
+  getStatusTextForState,
+  getStatusTextForTool,
+  getWorkStateForTool,
   isReadingTool,
+  isSittingState,
+  isWorkingState,
+  showStatus,
   updateCharacter,
 } from './characters.js';
 export type { GameLoopCallbacks } from './gameLoop.js';

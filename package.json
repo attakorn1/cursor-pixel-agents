@@ -1,94 +1,84 @@
 {
-  "name": "pixel-agents",
-  "displayName": "Pixel Agents",
-  "description": "Pixel art office where your Claude Code agents come to life as animated characters",
-  "version": "1.1.1",
-  "publisher": "pablodelucca",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/pablodelucca/pixel-agents"
-  },
-  "icon": "icon.png",
+  "name": "cursor-pixel-agents",
+  "displayName": "Cursor Pixel Agents",
+  "description": "A pixel-art animated office where your Cursor agents come to life as animated characters",
+  "version": "0.1.0",
+  "publisher": "cursor-pixel-agents",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.105.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
-  "activationEvents": [],
+  "keywords": [
+    "cursor",
+    "agent",
+    "pixel-art",
+    "ai",
+    "office",
+    "coding-assistant"
+  ],
+  "activationEvents": [
+    "*"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "pixel-agents.showPanel",
-        "title": "Pixel Agents: Show Panel"
+        "command": "cursorPixelAgents.show",
+        "title": "Cursor Pixel Agents: Show"
       },
       {
-        "command": "pixel-agents.exportDefaultLayout",
-        "title": "Pixel Agents: Export Layout as Default"
+        "command": "cursorPixelAgents.enableHooks",
+        "title": "Cursor Pixel Agents: Enable Hooks (Precise Agent Detection)"
+      },
+      {
+        "command": "cursorPixelAgents.disableHooks",
+        "title": "Cursor Pixel Agents: Disable Hooks"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "cursorPixelAgents.show",
+        "key": "ctrl+shift+.",
+        "mac": "cmd+shift+."
       }
     ],
     "viewsContainers": {
       "panel": [
         {
-          "id": "pixel-agents-panel",
-          "title": "Pixel Agents",
+          "id": "cursorPixelAgents",
+          "title": "Cursor Pixel Agents",
           "icon": "$(window)"
         }
       ]
     },
     "views": {
-      "pixel-agents-panel": [
+      "cursorPixelAgents": [
         {
           "type": "webview",
-          "id": "pixel-agents.panelView",
-          "name": "Pixel Agents"
+          "id": "cursorPixelAgents.panel",
+          "name": "Pixel Office"
         }
       ]
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run package",
+    "build": "npm run check-types && node esbuild.js && npm run build:webview",
     "build:webview": "cd webview-ui && npm run build",
-    "compile": "npm run check-types && npm run lint && node esbuild.js && npm run build:webview",
-    "build": "npm run compile",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production && npm run build:webview",
+    "watch": "node esbuild.js --watch",
     "check-types": "tsc --noEmit",
-    "prepare": "husky",
-    "lint": "eslint src",
-    "lint:fix": "eslint src --fix",
-    "lint:webview": "cd webview-ui && npm run lint",
-    "lint:webview:fix": "cd webview-ui && eslint . --fix",
-    "import-tileset": "tsx scripts/import-tileset-cli.ts",
-    "format": "prettier --write \"src/**/*.ts\" \"webview-ui/src/**/*.{ts,tsx,css}\" \"*.{js,mjs}\" \"webview-ui/*.{js,ts}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"webview-ui/src/**/*.{ts,tsx,css}\" \"*.{js,mjs}\" \"webview-ui/*.{js,ts}\""
+    "package": "npm run build && vsce package --allow-star-activation"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@types/node": "25.x",
-    "@types/pngjs": "^6.0.5",
-    "@types/vscode": "^1.105.0",
-    "esbuild": "^0.27.2",
-    "eslint": "^10.0.3",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-simple-import-sort": "^12.1.1",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.3.2",
-    "npm-run-all": "^4.1.5",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
     "pngjs": "^7.0.0",
-    "prettier": "^3.8.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0"
-  },
-  "lint-staged": {
-    "src/**/*.ts": "eslint --fix",
-    "webview-ui/src/**/*.{ts,tsx}": "eslint --fix",
-    "*.{ts,tsx,js,mjs,css,json,md}": "prettier --write",
-    "webview-ui/**/*.{ts,tsx,js,css,json}": "prettier --write"
+    "@types/pngjs": "^6.0.5",
+    "typescript": "^5.7.0"
   }
 }

@@ -1,7 +1,9 @@
 import { adjustSprite } from '../colorize.js';
 import type { Direction, FloorColor, SpriteData } from '../types.js';
 import { Direction as Dir } from '../types.js';
+import bubbleCoffeeData from './bubble-coffee.json';
 import bubblePermissionData from './bubble-permission.json';
+import bubbleThinkingData from './bubble-thinking.json';
 import bubbleWaitingData from './bubble-waiting.json';
 
 // ── Speech Bubble Sprites ───────────────────────────────────────
@@ -20,6 +22,12 @@ export const BUBBLE_PERMISSION_SPRITE: SpriteData = resolveBubbleSprite(bubblePe
 
 /** Waiting bubble: white square with green checkmark, and a tail pointer (11x13) */
 export const BUBBLE_WAITING_SPRITE: SpriteData = resolveBubbleSprite(bubbleWaitingData);
+
+/** Thinking bubble: white square with lightbulb icon in yellow, and a tail pointer (11x13) */
+export const BUBBLE_THINKING_SPRITE: SpriteData = resolveBubbleSprite(bubbleThinkingData);
+
+/** Coffee bubble: white square with coffee cup icon in brown, and a tail pointer (11x13) */
+export const BUBBLE_COFFEE_SPRITE: SpriteData = resolveBubbleSprite(bubbleCoffeeData);
 
 // ════════════════════════════════════════════════════════════════
 // Loaded character sprites (from PNG assets)

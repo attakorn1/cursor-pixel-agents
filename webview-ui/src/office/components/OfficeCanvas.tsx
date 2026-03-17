@@ -9,6 +9,7 @@ import {
   ZOOM_SCROLL_THRESHOLD,
 } from '../../constants.js';
 import { unlockAudio } from '../../notificationSound.js';
+import { computeFitZoom } from '../toolUtils.js';
 import { vscode } from '../../vscodeApi.js';
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js';
 import type { EditorState } from '../editor/editorState.js';
@@ -28,6 +29,7 @@ interface OfficeCanvasProps {
   officeState: OfficeState;
   onClick: (agentId: number) => void;
   isEditMode: boolean;
+  lockView: boolean;
   editorState: EditorState;
   onEditorTileAction: (col: number, row: number) => void;
   onEditorEraseAction: (col: number, row: number) => void;
@@ -39,12 +41,14 @@ interface OfficeCanvasProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
   panRef: React.MutableRefObject<{ x: number; y: number }>;
+  onPanEnd?: () => void;
 }
 
 export function OfficeCanvas({
   officeState,
   onClick,
   isEditMode,
+  lockView,
   editorState,
   onEditorTileAction,
   onEditorEraseAction,
@@ -56,6 +60,7 @@ export function OfficeCanvas({
   zoom,
   onZoomChange,
   panRef,
+  onPanEnd,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -70,6 +75,9 @@ export function OfficeCanvas({
   const isEraseDraggingRef = useRef(false);
   // Zoom scroll accumulator for trackpad pinch sensitivity
   const zoomAccumulatorRef = useRef(0);
+  // Auto-fit: when true, zoom is recalculated on resize to fit the container
+  const isAutoFitRef = useRef(true);
+  const lastAutoFitZoomRef = useRef<number | null>(null);
 
   // Clamp pan so the map edge can't go past a margin inside the viewport
   const clampPan = useCallback(
@@ -111,7 +119,24 @@ export function OfficeCanvas({
 
     resizeCanvas();
 
-    const observer = new ResizeObserver(() => resizeCanvas());
+    const applyAutoFit = () => {
+      const container = containerRef.current;
+      if (!container || !isAutoFitRef.current) return;
+      const rect = container.getBoundingClientRect();
+      const layout = officeState.getLayout();
+      if (rect.width > 0 && rect.height > 0 && layout.cols > 0 && layout.rows > 0) {
+        const fitZoom = computeFitZoom(rect.width, rect.height, layout.cols, layout.rows);
+        lastAutoFitZoomRef.current = fitZoom;
+        onZoomChange(fitZoom);
+      }
+    };
+
+    applyAutoFit();
+
+    const observer = new ResizeObserver(() => {
+      resizeCanvas();
+      applyAutoFit();
+    });
     if (containerRef.current) {
       observer.observe(containerRef.current);
     }
@@ -218,8 +243,8 @@ export function OfficeCanvas({
           }
         }
 
-        // Camera follow: smoothly center on followed agent
-        if (officeState.cameraFollowId !== null) {
+        // Camera follow: smoothly center on followed agent (disabled when view is locked)
+        if (!lockView && officeState.cameraFollowId !== null) {
           const followCh = officeState.characters.get(officeState.cameraFollowId);
           if (followCh) {
             const layout = officeState.getLayout();
@@ -280,7 +305,7 @@ export function OfficeCanvas({
       stop();
       observer.disconnect();
     };
-  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef]);
+  }, [officeState, resizeCanvas, isEditMode, lockView, editorState, _editorTick, zoom, panRef]);
 
   // Convert CSS mouse coords to world (sprite pixel) coords
   const screenToWorld = useCallback(
@@ -616,6 +641,7 @@ export function OfficeCanvas({
         isPanningRef.current = false;
         const canvas = canvasRef.current;
         if (canvas) canvas.style.cursor = isEditMode ? 'crosshair' : 'default';
+        onPanEnd?.();
         return;
       }
       if (e.button === 2) {
@@ -663,7 +689,7 @@ export function OfficeCanvas({
       editorState.isDragging = false;
       editorState.wallDragAdding = null;
     },
-    [editorState, isEditMode, officeState, onDragMove, onEditorSelectionChange],
+    [editorState, isEditMode, officeState, onDragMove, onEditorSelectionChange, onPanEnd],
   );
 
   const handleClick = useCallback(
@@ -682,7 +708,9 @@ export function OfficeCanvas({
           officeState.cameraFollowId = null;
         } else {
           officeState.selectedAgentId = hitId;
-          officeState.cameraFollowId = hitId;
+          if (!lockView) {
+            officeState.cameraFollowId = hitId;
+          }
         }
         onClick(hitId); // still focus terminal
         return;
@@ -728,7 +756,7 @@ export function OfficeCanvas({
         officeState.cameraFollowId = null;
       }
     },
-    [officeState, onClick, screenToWorld, screenToTile, isEditMode],
+    [officeState, onClick, screenToWorld, screenToTile, isEditMode, lockView],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -758,11 +786,19 @@ export function OfficeCanvas({
     [isEditMode, officeState, screenToTile],
   );
 
+  // Detect manual zoom from ZoomControls (zoom prop changed without us calling onZoomChange)
+  useEffect(() => {
+    if (lastAutoFitZoomRef.current !== null && Math.abs(zoom - lastAutoFitZoomRef.current) > 0.001) {
+      isAutoFitRef.current = false;
+    }
+  }, [zoom]);
+
   // Wheel: Ctrl+wheel to zoom, plain wheel/trackpad to pan
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
+        isAutoFitRef.current = false;
         // Accumulate scroll delta, step zoom when threshold crossed
         zoomAccumulatorRef.current += e.deltaY;
         if (Math.abs(zoomAccumulatorRef.current) >= ZOOM_SCROLL_THRESHOLD) {
@@ -781,9 +817,10 @@ export function OfficeCanvas({
           panRef.current.x - e.deltaX * dpr,
           panRef.current.y - e.deltaY * dpr,
         );
+        onPanEnd?.();
       }
     },
-    [zoom, onZoomChange, officeState, panRef, clampPan],
+    [zoom, onZoomChange, officeState, panRef, clampPan, onPanEnd],
   );
 
   // Prevent default middle-click browser behavior (auto-scroll)

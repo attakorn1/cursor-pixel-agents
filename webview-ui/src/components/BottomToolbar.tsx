@@ -1,155 +1,63 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
-import type { WorkspaceFolder } from '../hooks/useExtensionMessages.js';
-import { vscode } from '../vscodeApi.js';
 import { SettingsModal } from './SettingsModal.js';
 
 interface BottomToolbarProps {
   isEditMode: boolean;
-  onOpenClaude: () => void;
   onToggleEditMode: () => void;
+  lockView: boolean;
+  onToggleLockView: () => void;
   isDebugMode: boolean;
   onToggleDebugMode: () => void;
-  alwaysShowOverlay: boolean;
-  onToggleAlwaysShowOverlay: () => void;
-  workspaceFolders: WorkspaceFolder[];
 }
 
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
-  bottom: 10,
-  left: 10,
+  bottom: 6,
+  left: 6,
   zIndex: 'var(--pixel-controls-z)',
   display: 'flex',
   alignItems: 'center',
-  gap: 4,
-  background: 'var(--pixel-bg)',
-  border: '2px solid var(--pixel-border)',
+  gap: 2,
+  background: 'rgba(30, 30, 46, 0.55)',
+  border: '1px solid rgba(74, 74, 106, 0.4)',
   borderRadius: 0,
-  padding: '4px 6px',
-  boxShadow: 'var(--pixel-shadow)',
+  padding: '2px 3px',
+  backdropFilter: 'blur(4px)',
 };
 
 const btnBase: React.CSSProperties = {
-  padding: '5px 10px',
-  fontSize: '24px',
-  color: 'var(--pixel-text)',
-  background: 'var(--pixel-btn-bg)',
-  border: '2px solid transparent',
+  padding: '2px 6px',
+  fontSize: '13px',
+  color: 'rgba(255, 255, 255, 0.6)',
+  background: 'rgba(255, 255, 255, 0.04)',
+  border: '1px solid transparent',
   borderRadius: 0,
   cursor: 'pointer',
+  letterSpacing: '0.5px',
 };
 
 const btnActive: React.CSSProperties = {
   ...btnBase,
-  background: 'var(--pixel-active-bg)',
-  border: '2px solid var(--pixel-accent)',
+  color: 'rgba(255, 255, 255, 0.85)',
+  background: 'rgba(90, 140, 255, 0.2)',
+  border: '1px solid rgba(90, 140, 255, 0.5)',
 };
 
 export function BottomToolbar({
   isEditMode,
-  onOpenClaude,
   onToggleEditMode,
+  lockView,
+  onToggleLockView,
   isDebugMode,
   onToggleDebugMode,
-  alwaysShowOverlay,
-  onToggleAlwaysShowOverlay,
-  workspaceFolders,
 }: BottomToolbarProps) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
-  const [hoveredFolder, setHoveredFolder] = useState<number | null>(null);
-  const folderPickerRef = useRef<HTMLDivElement>(null);
-
-  // Close folder picker on outside click
-  useEffect(() => {
-    if (!isFolderPickerOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node)) {
-        setIsFolderPickerOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [isFolderPickerOpen]);
-
-  const hasMultipleFolders = workspaceFolders.length > 1;
-
-  const handleAgentClick = () => {
-    if (hasMultipleFolders) {
-      setIsFolderPickerOpen((v) => !v);
-    } else {
-      onOpenClaude();
-    }
-  };
-
-  const handleFolderSelect = (folder: WorkspaceFolder) => {
-    setIsFolderPickerOpen(false);
-    vscode.postMessage({ type: 'openClaude', folderPath: folder.path });
-  };
 
   return (
     <div style={panelStyle}>
-      <div ref={folderPickerRef} style={{ position: 'relative' }}>
-        <button
-          onClick={handleAgentClick}
-          onMouseEnter={() => setHovered('agent')}
-          onMouseLeave={() => setHovered(null)}
-          style={{
-            ...btnBase,
-            padding: '5px 12px',
-            background:
-              hovered === 'agent' || isFolderPickerOpen
-                ? 'var(--pixel-agent-hover-bg)'
-                : 'var(--pixel-agent-bg)',
-            border: '2px solid var(--pixel-agent-border)',
-            color: 'var(--pixel-agent-text)',
-          }}
-        >
-          + Agent
-        </button>
-        {isFolderPickerOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '100%',
-              left: 0,
-              marginBottom: 4,
-              background: 'var(--pixel-bg)',
-              border: '2px solid var(--pixel-border)',
-              borderRadius: 0,
-              boxShadow: 'var(--pixel-shadow)',
-              minWidth: 160,
-              zIndex: 'var(--pixel-controls-z)',
-            }}
-          >
-            {workspaceFolders.map((folder, i) => (
-              <button
-                key={folder.path}
-                onClick={() => handleFolderSelect(folder)}
-                onMouseEnter={() => setHoveredFolder(i)}
-                onMouseLeave={() => setHoveredFolder(null)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '6px 10px',
-                  fontSize: '22px',
-                  color: 'var(--pixel-text)',
-                  background: hoveredFolder === i ? 'var(--pixel-btn-hover-bg)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 0,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {folder.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+
       <button
         onClick={onToggleEditMode}
         onMouseEnter={() => setHovered('edit')}
@@ -159,7 +67,7 @@ export function BottomToolbar({
             ? { ...btnActive }
             : {
                 ...btnBase,
-                background: hovered === 'edit' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+                background: hovered === 'edit' ? 'rgba(255, 255, 255, 0.08)' : btnBase.background,
               }
         }
         title="Edit office layout"
@@ -177,7 +85,7 @@ export function BottomToolbar({
               : {
                   ...btnBase,
                   background:
-                    hovered === 'settings' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+                    hovered === 'settings' ? 'rgba(255, 255, 255, 0.08)' : btnBase.background,
                 }
           }
           title="Settings"
@@ -187,10 +95,10 @@ export function BottomToolbar({
         <SettingsModal
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+          lockView={lockView}
+          onToggleLockView={onToggleLockView}
           isDebugMode={isDebugMode}
           onToggleDebugMode={onToggleDebugMode}
-          alwaysShowOverlay={alwaysShowOverlay}
-          onToggleAlwaysShowOverlay={onToggleAlwaysShowOverlay}
         />
       </div>
     </div>

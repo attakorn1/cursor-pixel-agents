@@ -40,6 +40,16 @@ export const CharacterState = {
   IDLE: 'idle',
   WALK: 'walk',
   TYPE: 'type',
+  IDLE_SITTING: 'idle_sitting',
+  IDLE_CASUAL_TYPE: 'idle_casual_type',
+  IDLE_READING: 'idle_reading',
+  IDLE_THINKING: 'idle_thinking',
+  IDLE_COFFEE: 'idle_coffee',
+  IDLE_STRETCHING: 'idle_stretching',
+  WORK_TYPING: 'work_typing',
+  WORK_READING: 'work_reading',
+  WORK_THINKING: 'work_thinking',
+  COMPLETED: 'completed',
 } as const;
 export type CharacterState = (typeof CharacterState)[keyof typeof CharacterState];
 
@@ -173,7 +183,7 @@ export interface Character {
   /** Assigned seat uid, or null if no seat */
   seatId: string | null;
   /** Active speech bubble type, or null if none showing */
-  bubbleType: 'permission' | 'waiting' | null;
+  bubbleType: 'permission' | 'waiting' | 'thinking' | 'coffee' | null;
   /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
   bubbleTimer: number;
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */
@@ -190,4 +200,18 @@ export interface Character {
   matrixEffectSeeds: number[];
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string;
+  /** Composer mode when this agent was created (agent, ask, edit) */
+  composerMode?: 'agent' | 'ask' | 'edit';
+  /** Whether this agent is a background agent */
+  isBackgroundAgent?: boolean;
+  /** Countdown to next idle behavior switch (seconds) */
+  idleBehaviorTimer: number;
+  /** Tracks round-robin index for idle behavior variety */
+  idleBehaviorIndex: number;
+  /** Countdown for the COMPLETED state duration */
+  completedTimer: number;
+  /** Countdown timer for auto-showing the status overlay (counts down to 0, negative = hidden) */
+  statusVisibleTimer: number;
+  /** Office-style activity text shown in the overlay */
+  statusText: string;
 }

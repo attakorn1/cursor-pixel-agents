@@ -1,6 +1,6 @@
 import type { SpriteData } from '../types.js';
 
-const zoomCaches = new Map<number, WeakMap<SpriteData, HTMLCanvasElement>>();
+const spriteCache = new WeakMap<SpriteData, HTMLCanvasElement>();
 
 // ── Outline sprite generation ─────────────────────────────────
 
@@ -45,21 +45,16 @@ export function getOutlineSprite(sprite: SpriteData): SpriteData {
   return outline;
 }
 
-export function getCachedSprite(sprite: SpriteData, zoom: number): HTMLCanvasElement {
-  let cache = zoomCaches.get(zoom);
-  if (!cache) {
-    cache = new WeakMap();
-    zoomCaches.set(zoom, cache);
-  }
-
-  const cached = cache.get(sprite);
+/** Cache sprites at 1x resolution. Scaling is done via drawImage in the renderer. */
+export function getCachedSprite(sprite: SpriteData): HTMLCanvasElement {
+  const cached = spriteCache.get(sprite);
   if (cached) return cached;
 
   const rows = sprite.length;
   const cols = sprite[0].length;
   const canvas = document.createElement('canvas');
-  canvas.width = cols * zoom;
-  canvas.height = rows * zoom;
+  canvas.width = cols;
+  canvas.height = rows;
   const ctx = canvas.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
@@ -68,10 +63,10 @@ export function getCachedSprite(sprite: SpriteData, zoom: number): HTMLCanvasEle
       const color = sprite[r][c];
       if (color === '') continue;
       ctx.fillStyle = color;
-      ctx.fillRect(c * zoom, r * zoom, zoom, zoom);
+      ctx.fillRect(c, r, 1, 1);
     }
   }
 
-  cache.set(sprite, canvas);
+  spriteCache.set(sprite, canvas);
   return canvas;
 }

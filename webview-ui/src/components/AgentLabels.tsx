@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import type { SubagentCharacter } from '../hooks/useExtensionMessages.js';
+import { isSittingState } from '../office/engine/characters.js';
 import type { OfficeState } from '../office/engine/officeState.js';
-import { CharacterState, TILE_SIZE } from '../office/types.js';
+import { TILE_SIZE } from '../office/types.js';
 
 interface AgentLabelsProps {
   officeState: OfficeState;
@@ -63,7 +64,7 @@ export function AgentLabels({
         if (!ch) return null;
 
         // Character position: device pixels → CSS pixels (follow sitting offset)
-        const sittingOffset = ch.state === CharacterState.TYPE ? 6 : 0;
+        const sittingOffset = isSittingState(ch.state) ? 6 : 0;
         const screenX = (deviceOffsetX + ch.x * zoom) / dpr;
         const screenY = (deviceOffsetY + (ch.y + sittingOffset - 24) * zoom) / dpr;
 
@@ -110,14 +111,14 @@ export function AgentLabels({
             )}
             <span
               style={{
-                fontSize: isSub ? '16px' : '18px',
+                fontSize: isSub ? '10px' : '11px',
                 fontStyle: isSub ? 'italic' : undefined,
                 color: 'var(--vscode-foreground)',
-                background: 'rgba(30,30,46,0.7)',
-                padding: '1px 4px',
-                borderRadius: 2,
+                background: 'rgba(30,30,46,0.55)',
+                padding: '1px 3px',
+                borderRadius: 1,
                 whiteSpace: 'nowrap',
-                maxWidth: isSub ? 120 : undefined,
+                maxWidth: isSub ? 90 : undefined,
                 overflow: isSub ? 'hidden' : undefined,
                 textOverflow: isSub ? 'ellipsis' : undefined,
               }}

@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
 
-import { CHARACTER_SITTING_OFFSET_PX, TOOL_OVERLAY_VERTICAL_OFFSET } from '../../constants.js';
+import {
+  CHARACTER_SITTING_OFFSET_PX,
+  STATUS_FADE_DURATION_SEC,
+  TOOL_OVERLAY_VERTICAL_OFFSET,
+} from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
+import { isSittingState } from '../engine/characters.js';
 import type { OfficeState } from '../engine/officeState.js';
-import type { ToolActivity } from '../types.js';
-import { CharacterState, TILE_SIZE } from '../types.js';
+import type { Character, ToolActivity } from '../types.js';
+import { TILE_SIZE } from '../types.js';
 
 interface ToolOverlayProps {
   officeState: OfficeState;
@@ -15,31 +20,40 @@ interface ToolOverlayProps {
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
   onCloseAgent: (id: number) => void;
-  alwaysShowOverlay: boolean;
 }
 
-/** Derive a short human-readable activity string from tools/status */
-function getActivityText(
-  agentId: number,
-  agentTools: Record<number, ToolActivity[]>,
-  isActive: boolean,
+function getDetailedActivityText(
+  ch: Character,
+  tools: ToolActivity[] | undefined,
+  subagentCharacters: SubagentCharacter[],
 ): string {
-  const tools = agentTools[agentId];
-  if (tools && tools.length > 0) {
-    // Find the latest non-done tool
-    const activeTool = [...tools].reverse().find((t) => !t.done);
-    if (activeTool) {
-      if (activeTool.permissionWait) return 'Needs approval';
-      return activeTool.status;
-    }
-    // All tools done but agent still active (mid-turn) — keep showing last tool status
-    if (isActive) {
-      const lastTool = tools[tools.length - 1];
-      if (lastTool) return lastTool.status;
-    }
+  if (ch.isSubagent) {
+    if (ch.bubbleType === 'permission') return 'Needs approval';
+    const sub = subagentCharacters.find((s) => s.id === ch.id);
+    return sub ? sub.label : 'Subtask';
   }
+  if (!tools || tools.length === 0) return ch.statusText || 'Idle';
 
-  return 'Idle';
+  const activeTool = [...tools].reverse().find((t) => !t.done);
+  if (activeTool) {
+    return activeTool.permissionWait ? 'Needs approval' : activeTool.status;
+  }
+  if (ch.isActive) {
+    return tools[tools.length - 1]?.status ?? (ch.statusText || 'Idle');
+  }
+  return ch.statusText || 'Idle';
+}
+
+function getDotColor(
+  ch: Character,
+  tools: ToolActivity[] | undefined,
+): string | null {
+  const hasPermission =
+    (ch.isSubagent && ch.bubbleType === 'permission') ||
+    tools?.some((t) => t.permissionWait && !t.done);
+  if (hasPermission) return 'var(--pixel-status-permission)';
+  if (ch.isActive && tools?.some((t) => !t.done)) return 'var(--pixel-status-active)';
+  return null;
 }
 
 export function ToolOverlay({
@@ -51,7 +65,6 @@ export function ToolOverlay({
   zoom,
   panRef,
   onCloseAgent,
-  alwaysShowOverlay,
 }: ToolOverlayProps) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -78,55 +91,40 @@ export function ToolOverlay({
 
   const selectedId = officeState.selectedAgentId;
   const hoveredId = officeState.hoveredAgentId;
-
-  // All character IDs
   const allIds = [...agents, ...subagentCharacters.map((s) => s.id)];
 
   return (
     <>
       {allIds.map((id) => {
         const ch = officeState.characters.get(id);
-        if (!ch) return null;
+        if (!ch || ch.matrixEffect) return null;
 
         const isSelected = selectedId === id;
         const isHovered = hoveredId === id;
-        const isSub = ch.isSubagent;
+        const autoVisible = ch.statusVisibleTimer > 0;
+        if (!isSelected && !isHovered && !autoVisible) return null;
 
-        // Only show for hovered or selected agents (unless always-show is on)
-        if (!alwaysShowOverlay && !isSelected && !isHovered) return null;
+        let opacity = 1.0;
+        if (!isSelected && !isHovered && ch.statusVisibleTimer < STATUS_FADE_DURATION_SEC) {
+          opacity = Math.max(0, ch.statusVisibleTimer / STATUS_FADE_DURATION_SEC);
+        }
 
-        // Position above character
-        const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+        const sittingOffset = isSittingState(ch.state) ? CHARACTER_SITTING_OFFSET_PX : 0;
         const screenX = (deviceOffsetX + ch.x * zoom) / dpr;
         const screenY =
           (deviceOffsetY + (ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET) * zoom) / dpr;
 
-        // Get activity text
-        const subHasPermission = isSub && ch.bubbleType === 'permission';
-        let activityText: string;
-        if (isSub) {
-          if (subHasPermission) {
-            activityText = 'Needs approval';
-          } else {
-            const sub = subagentCharacters.find((s) => s.id === id);
-            activityText = sub ? sub.label : 'Subtask';
-          }
-        } else {
-          activityText = getActivityText(id, agentTools, ch.isActive);
-        }
-
-        // Determine dot color
         const tools = agentTools[id];
-        const hasPermission = subHasPermission || tools?.some((t) => t.permissionWait && !t.done);
-        const hasActiveTools = tools?.some((t) => !t.done);
-        const isActive = ch.isActive;
+        const activityText = (isSelected || isHovered)
+          ? getDetailedActivityText(ch, tools, subagentCharacters)
+          : ch.statusText;
+        if (!activityText) return null;
 
-        let dotColor: string | null = null;
-        if (hasPermission) {
-          dotColor = 'var(--pixel-status-permission)';
-        } else if (isActive && hasActiveTools) {
-          dotColor = 'var(--pixel-status-active)';
-        }
+        const dotColor = getDotColor(ch, tools);
+        const isSub = ch.isSubagent;
+        const hasPermission =
+          (isSub && ch.bubbleType === 'permission') ||
+          tools?.some((t) => t.permissionWait && !t.done);
 
         return (
           <div
@@ -140,29 +138,30 @@ export function ToolOverlay({
               flexDirection: 'column',
               alignItems: 'center',
               pointerEvents: isSelected ? 'auto' : 'none',
-              opacity: alwaysShowOverlay && !isSelected && !isHovered ? (isSub ? 0.5 : 0.75) : 1,
               zIndex: isSelected ? 'var(--pixel-overlay-selected-z)' : 'var(--pixel-overlay-z)',
+              opacity,
+              transition: opacity < 1 ? undefined : 'opacity 0.15s ease-out',
             }}
           >
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 5,
-                background: 'var(--pixel-bg)',
+                gap: 4,
+                background: 'rgba(30, 30, 46, 0.7)',
                 border: isSelected
-                  ? '2px solid var(--pixel-border-light)'
-                  : '2px solid var(--pixel-border)',
+                  ? '1px solid rgba(106, 106, 138, 0.5)'
+                  : '1px solid rgba(74, 74, 106, 0.4)',
                 borderRadius: 0,
-                padding: isSelected ? '3px 6px 3px 8px' : '3px 8px',
-                boxShadow: 'var(--pixel-shadow)',
+                padding: isSelected ? '2px 4px 2px 6px' : '2px 6px',
+                backdropFilter: 'blur(4px)',
                 whiteSpace: 'nowrap',
-                maxWidth: 220,
+                maxWidth: 180,
               }}
             >
               {dotColor && (
                 <span
-                  className={isActive && !hasPermission ? 'pixel-agents-pulse' : undefined}
+                  className={ch.isActive && !hasPermission ? 'pixel-agents-pulse' : undefined}
                   style={{
                     width: 6,
                     height: 6,
@@ -175,7 +174,7 @@ export function ToolOverlay({
               <div style={{ overflow: 'hidden' }}>
                 <span
                   style={{
-                    fontSize: isSub ? '20px' : '22px',
+                    fontSize: isSub ? '11px' : '12px',
                     fontStyle: isSub ? 'italic' : undefined,
                     color: 'var(--vscode-foreground)',
                     overflow: 'hidden',
@@ -188,7 +187,7 @@ export function ToolOverlay({
                 {ch.folderName && (
                   <span
                     style={{
-                      fontSize: '16px',
+                      fontSize: '10px',
                       color: 'var(--pixel-text-dim)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -212,7 +211,7 @@ export function ToolOverlay({
                     color: 'var(--pixel-close-text)',
                     cursor: 'pointer',
                     padding: '0 2px',
-                    fontSize: '26px',
+                    fontSize: '14px',
                     lineHeight: 1,
                     marginLeft: 2,
                     flexShrink: 0,

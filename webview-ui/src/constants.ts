@@ -18,6 +18,18 @@ export const WANDER_MOVES_BEFORE_REST_MAX = 6;
 export const SEAT_REST_MIN_SEC = 120.0;
 export const SEAT_REST_MAX_SEC = 240.0;
 
+// ── Idle Behavior Scheduling ────────────────────────────────
+export const IDLE_BEHAVIOR_MIN_SEC = 5.0;
+export const IDLE_BEHAVIOR_MAX_SEC = 10.0;
+export const IDLE_STRETCHING_DURATION_SEC = 3.0;
+export const WORK_THINKING_DURATION_SEC = 1.5;
+export const COMPLETED_DURATION_SEC = 2.0;
+
+// ── Status Overlay Auto-Display ─────────────────────────────
+export const STATUS_VISIBLE_DURATION_SEC = 3.0;
+export const STATUS_FADE_DURATION_SEC = 0.5;
+export const STATUS_IDLE_VISIBLE_DURATION_SEC = 2.5;
+
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3;
 export const MATRIX_TRAIL_LENGTH = 6;
@@ -67,12 +79,15 @@ export const SELECTION_HIGHLIGHT_COLOR = '#007fd4';
 export const DELETE_BUTTON_BG = 'rgba(200, 50, 50, 0.85)';
 export const ROTATE_BUTTON_BG = 'rgba(50, 120, 200, 0.85)';
 
+// ── View State ──────────────────────────────────────────────
+export const VIEW_STATE_SAVE_DEBOUNCE_MS = 500;
+
 // ── Camera ───────────────────────────────────────────────────
 export const CAMERA_FOLLOW_LERP = 0.1;
 export const CAMERA_FOLLOW_SNAP_THRESHOLD = 0.5;
 
 // ── Zoom ─────────────────────────────────────────────────────
-export const ZOOM_MIN = 1;
+export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 10;
 export const ZOOM_DEFAULT_DPR_FACTOR = 2;
 export const ZOOM_LEVEL_FADE_DELAY_MS = 1500;

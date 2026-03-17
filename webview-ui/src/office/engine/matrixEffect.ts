@@ -61,8 +61,13 @@ export function renderMatrixEffect(
       const pixel = spriteData[row]?.[col];
       const hasPixel = pixel && pixel !== '';
       const distFromHead = headRow - row;
-      const px = drawX + col * zoom;
-      const py = drawY + row * zoom;
+      const px = Math.round(drawX + col * zoom);
+      const py = Math.round(drawY + row * zoom);
+      const nextPx = Math.round(drawX + (col + 1) * zoom);
+      const nextPy = Math.round(drawY + (row + 1) * zoom);
+      const w = nextPx - px;
+      const h = nextPy - py;
+      if (w <= 0 || h <= 0) continue;
 
       if (isSpawn) {
         // Spawn: head sweeps down revealing character pixels
@@ -72,19 +77,19 @@ export function renderMatrixEffect(
         } else if (distFromHead < 1) {
           // Head pixel: bright white-green
           ctx.fillStyle = MATRIX_HEAD_COLOR;
-          ctx.fillRect(px, py, zoom, zoom);
+          ctx.fillRect(px, py, w, h);
         } else if (distFromHead < MATRIX_TRAIL_LENGTH) {
           // Trail zone: show character pixel with green overlay, or just green if no pixel
           const trailPos = distFromHead / MATRIX_TRAIL_LENGTH;
           if (hasPixel) {
             // Draw original pixel
             ctx.fillStyle = pixel;
-            ctx.fillRect(px, py, zoom, zoom);
+            ctx.fillRect(px, py, w, h);
             // Green overlay that fades as trail progresses
             const greenAlpha = (1 - trailPos) * MATRIX_TRAIL_OVERLAY_ALPHA;
             if (flickerVisible(col, row, time)) {
               ctx.fillStyle = `rgba(0, 255, 65, ${greenAlpha})`;
-              ctx.fillRect(px, py, zoom, zoom);
+              ctx.fillRect(px, py, w, h);
             }
           } else {
             // No character pixel: fading green trail
@@ -96,14 +101,14 @@ export function renderMatrixEffect(
                   : trailPos < MATRIX_TRAIL_DIM_THRESHOLD
                     ? `rgba(0, 170, 40, ${alpha})`
                     : `rgba(0, 85, 20, ${alpha})`;
-              ctx.fillRect(px, py, zoom, zoom);
+              ctx.fillRect(px, py, w, h);
             }
           }
         } else {
           // Below trail: normal character pixel
           if (hasPixel) {
             ctx.fillStyle = pixel;
-            ctx.fillRect(px, py, zoom, zoom);
+            ctx.fillRect(px, py, w, h);
           }
         }
       } else {
@@ -112,12 +117,12 @@ export function renderMatrixEffect(
           // Above head: normal character pixel (not yet consumed)
           if (hasPixel) {
             ctx.fillStyle = pixel;
-            ctx.fillRect(px, py, zoom, zoom);
+            ctx.fillRect(px, py, w, h);
           }
         } else if (distFromHead < 1) {
           // Head pixel: bright white-green
           ctx.fillStyle = MATRIX_HEAD_COLOR;
-          ctx.fillRect(px, py, zoom, zoom);
+          ctx.fillRect(px, py, w, h);
         } else if (distFromHead < MATRIX_TRAIL_LENGTH) {
           // Trail zone: fading green
           if (flickerVisible(col, row, time)) {
@@ -129,7 +134,7 @@ export function renderMatrixEffect(
                 : trailPos < MATRIX_TRAIL_DIM_THRESHOLD
                   ? `rgba(0, 170, 40, ${alpha})`
                   : `rgba(0, 85, 20, ${alpha})`;
-            ctx.fillRect(px, py, zoom, zoom);
+            ctx.fillRect(px, py, w, h);
           }
         }
         // Below trail: nothing (consumed)

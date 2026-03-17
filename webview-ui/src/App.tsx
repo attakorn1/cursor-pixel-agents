@@ -28,13 +28,14 @@ function getOfficeState(): OfficeState {
 }
 
 const actionBarBtnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  fontSize: '22px',
-  background: 'var(--pixel-btn-bg)',
-  color: 'var(--pixel-text-dim)',
-  border: '2px solid transparent',
+  padding: '2px 7px',
+  fontSize: '13px',
+  background: 'rgba(255, 255, 255, 0.05)',
+  color: 'rgba(255, 255, 255, 0.6)',
+  border: '1px solid transparent',
   borderRadius: 0,
   cursor: 'pointer',
+  letterSpacing: '0.3px',
 };
 
 const actionBarBtnDisabled: React.CSSProperties = {
@@ -59,18 +60,18 @@ function EditActionBar({
     <div
       style={{
         position: 'absolute',
-        top: 8,
+        top: 6,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 'var(--pixel-controls-z)',
         display: 'flex',
-        gap: 4,
+        gap: 2,
         alignItems: 'center',
-        background: 'var(--pixel-bg)',
-        border: '2px solid var(--pixel-border)',
+        background: 'rgba(30, 30, 46, 0.55)',
+        border: '1px solid rgba(74, 74, 106, 0.4)',
         borderRadius: 0,
-        padding: '4px 8px',
-        boxShadow: 'var(--pixel-shadow)',
+        padding: '2px 5px',
+        backdropFilter: 'blur(4px)',
       }}
     >
       <button
@@ -100,7 +101,7 @@ function EditActionBar({
         </button>
       ) : (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: '22px', color: 'var(--pixel-reset-text)' }}>Reset?</span>
+          <span style={{ fontSize: '13px', color: 'var(--pixel-reset-text)' }}>Reset?</span>
           <button
             style={{ ...actionBarBtnStyle, background: 'var(--pixel-danger-bg)', color: '#fff' }}
             onClick={() => {
@@ -137,21 +138,15 @@ function App() {
     layoutReady,
     layoutWasReset,
     loadedAssets,
-    workspaceFolders,
-  } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
+  } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty, editor.restoreViewState);
 
   // Show migration notice once layout reset is detected
   const [migrationNoticeDismissed, setMigrationNoticeDismissed] = useState(false);
   const showMigrationNotice = layoutWasReset && !migrationNoticeDismissed;
 
   const [isDebugMode, setIsDebugMode] = useState(false);
-  const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), []);
-  const handleToggleAlwaysShowOverlay = useCallback(
-    () => setAlwaysShowOverlay((prev) => !prev),
-    [],
-  );
 
   const handleSelectAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'focusAgent', id });
@@ -243,6 +238,7 @@ function App() {
         officeState={officeState}
         onClick={handleClick}
         isEditMode={editor.isEditMode}
+        lockView={editor.lockView}
         editorState={editorState}
         onEditorTileAction={editor.handleEditorTileAction}
         onEditorEraseAction={editor.handleEditorEraseAction}
@@ -254,6 +250,7 @@ function App() {
         zoom={editor.zoom}
         onZoomChange={editor.handleZoomChange}
         panRef={editor.panRef}
+        onPanEnd={editor.debouncedSaveViewState}
       />
 
       {!isDebugMode && <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />}
@@ -271,13 +268,11 @@ function App() {
 
       <BottomToolbar
         isEditMode={editor.isEditMode}
-        onOpenClaude={editor.handleOpenClaude}
         onToggleEditMode={editor.handleToggleEditMode}
+        lockView={editor.lockView}
+        onToggleLockView={editor.handleLockViewChange}
         isDebugMode={isDebugMode}
         onToggleDebugMode={handleToggleDebugMode}
-        alwaysShowOverlay={alwaysShowOverlay}
-        onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
-        workspaceFolders={workspaceFolders}
       />
 
       {editor.isEditMode && editor.isDirty && (
@@ -288,17 +283,17 @@ function App() {
         <div
           style={{
             position: 'absolute',
-            top: editor.isDirty ? 52 : 8,
+            top: editor.isDirty ? 36 : 6,
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 49,
-            background: 'var(--pixel-hint-bg)',
-            color: '#fff',
-            fontSize: '20px',
-            padding: '3px 8px',
+            background: 'rgba(50, 120, 200, 0.5)',
+            color: 'rgba(255, 255, 255, 0.8)',
+            fontSize: '12px',
+            padding: '2px 6px',
             borderRadius: 0,
-            border: '2px solid var(--pixel-accent)',
-            boxShadow: 'var(--pixel-shadow)',
+            border: '1px solid rgba(90, 140, 255, 0.4)',
+            backdropFilter: 'blur(4px)',
             pointerEvents: 'none',
             whiteSpace: 'nowrap',
           }}
@@ -346,7 +341,6 @@ function App() {
           zoom={editor.zoom}
           panRef={editor.panRef}
           onCloseAgent={handleCloseAgent}
-          alwaysShowOverlay={alwaysShowOverlay}
         />
       )}
 
@@ -376,42 +370,42 @@ function App() {
         >
           <div
             style={{
-              background: 'var(--pixel-bg)',
-              border: '2px solid var(--pixel-border)',
+              background: 'rgba(30, 30, 46, 0.92)',
+              border: '1px solid rgba(74, 74, 106, 0.5)',
               borderRadius: 0,
-              padding: '24px 32px',
-              maxWidth: 620,
-              boxShadow: 'var(--pixel-shadow)',
+              padding: '16px 24px',
+              maxWidth: 420,
+              backdropFilter: 'blur(8px)',
               textAlign: 'center',
-              lineHeight: 1.3,
+              lineHeight: 1.4,
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: '40px', marginBottom: 12, color: 'var(--pixel-accent)' }}>
+            <div style={{ fontSize: '18px', marginBottom: 8, color: 'var(--pixel-accent)' }}>
               We owe you an apology!
             </div>
-            <p style={{ fontSize: '26px', color: 'var(--pixel-text)', margin: '0 0 12px 0' }}>
+            <p style={{ fontSize: '13px', color: 'var(--pixel-text)', margin: '0 0 8px 0' }}>
               We've just migrated to fully open-source assets, all built from scratch with love.
               Unfortunately, this means your previous layout had to be reset.
             </p>
-            <p style={{ fontSize: '26px', color: 'var(--pixel-text)', margin: '0 0 12px 0' }}>
+            <p style={{ fontSize: '13px', color: 'var(--pixel-text)', margin: '0 0 8px 0' }}>
               We're really sorry about that.
             </p>
-            <p style={{ fontSize: '26px', color: 'var(--pixel-text)', margin: '0 0 12px 0' }}>
+            <p style={{ fontSize: '13px', color: 'var(--pixel-text)', margin: '0 0 8px 0' }}>
               The good news? This was a one-time thing, and it paves the way for some genuinely
               exciting updates ahead.
             </p>
-            <p style={{ fontSize: '26px', color: 'var(--pixel-text-dim)', margin: '0 0 20px 0' }}>
+            <p style={{ fontSize: '13px', color: 'var(--pixel-text-dim)', margin: '0 0 14px 0' }}>
               Stay tuned, and thanks for using Pixel Agents!
             </p>
             <button
               className="pixel-agents-migration-btn"
               style={{
-                padding: '6px 24px 8px',
-                fontSize: '30px',
+                padding: '4px 16px 5px',
+                fontSize: '14px',
                 background: 'var(--pixel-accent)',
                 color: '#fff',
-                border: '2px solid var(--pixel-accent)',
+                border: '1px solid var(--pixel-accent)',
                 borderRadius: 0,
                 cursor: 'pointer',
                 boxShadow: 'var(--pixel-shadow)',
