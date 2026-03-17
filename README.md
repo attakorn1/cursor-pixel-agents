@@ -1,5 +1,9 @@
 # Cursor Pixel Agents
 
+**Version 0.1.0**
+
+This is a fork of the original [pixel-agents](https://github.com/pablodelucca/pixel-agents) project by pablodelucca, adapted specifically for Cursor's AI agents.
+
 A VS Code / Cursor extension that brings your AI agents to life as animated pixel-art characters working in a customizable office.
 
 When you chat with Cursor's AI agents, they appear in a tiny isometric office — reading files, writing code, running commands, and even calling sub-agents — all visualized with retro pixel-art animations.
@@ -7,13 +11,16 @@ When you chat with Cursor's AI agents, they appear in a tiny isometric office �
 ## Features
 
 - **Live agent visualization** — each active Cursor agent spawns as an animated pixel character that walks to a desk and performs actions in real time.
-- **Tool-aware animations** — the character's activity reflects the tool being used: reading files, editing code, running shell commands, searching, and more.
-- **Sub-agent support** — when an agent delegates work via the Task tool, a second character appears and sits down at a nearby desk.
+- **Tool-aware animations** — characters transition between typing, reading, and thinking states based on the specific tool being used by the agent.
+- **Sub-agent support** — when an agent delegates work via the `Task` tool, a second character appears and sits down at a nearby desk to help out.
 - **Customizable office** — enter Edit Mode to rearrange furniture, paint floors and walls, and design your dream pixel office. Layouts are saved and persist across sessions.
-- **Two detection modes** — works out-of-the-box by watching agent transcript files, or optionally via Cursor hooks for more precise event detection.
+- **Electronics "Auto-On"** — desks and computers automatically turn on and animate when an agent sits down to work.
+- **Diverse characters** — 6 diverse base characters with random palette selection and hue shifting, ensuring a unique look for every agent.
+- **Two detection modes** — works out-of-the-box by watching agent transcript files, or optionally via Cursor hooks for more precise, real-time event detection.
 - **Status bar integration** — a status bar item shows the current agent state (Working, Done, etc.) and opens the office panel on click.
 - **Zoom & pan** — scroll to zoom and drag to pan around your office.
-- **Sound effects** — optional audio feedback for agent actions.
+- **Sound effects** — optional audio feedback when an agent completes its turn.
+- **Interactive office** — click characters to select them, right-click to command them to walk to a specific tile, or reassign them to different seats.
 
 ## Getting Started
 
@@ -80,22 +87,22 @@ The extension supports two detection modes:
 
 Agent tool calls are mapped to character animations:
 
-| Activity | Triggered by |
-|---|---|
-| Reading | Read, Glob, Grep, SemanticSearch |
-| Editing | Write, StrReplace, EditNotebook, Delete |
-| Running | Shell |
-| Phoning | Task (sub-agent delegation) |
-| Celebrating | Agent completes successfully |
+| Activity | Tool Triggers | Animation |
+|---|---|---|
+| **Reading** | `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `SemanticSearch` | Reviewing documents/files |
+| **Editing** | `Write`, `StrReplace`, `Edit`, `EditNotebook`, `Delete`, `Bash`, `Shell` | Typing on keyboard |
+| **Thinking** | `Task` (parent agent) | Thinking bubble / "Phoning" for help |
+| **Sub-agent** | `Task` (sub-agent delegation) | Spawning a helper character |
+| **Celebrating** | Agent completes successfully | "Done!" status bubble & celebration |
 
 ### Office Editor
 
 Toggle Edit Mode from the bottom toolbar to customize your office:
 
-- **Floor & Wall painting** — choose tile styles and colors
+- **Floor & Wall painting** — choose tile styles and colors with HSB control
 - **Furniture placement** — desks, chairs, bookshelves, plants, paintings, whiteboards, and more
 - **Rotate & reposition** — drag furniture around, press `R` to rotate
-- **Undo / Redo** — `Ctrl+Z` / `Ctrl+Y`
+- **Undo / Redo** — `Ctrl+Z` / `Ctrl+Y` (up to 50 levels)
 - **Save & Reset** — persist your layout or revert to the last saved state
 - **Import / Export** — share layouts as JSON files
 
@@ -122,11 +129,11 @@ cursor-pixel-agents/
 │   │   ├── components/         # BottomToolbar, DebugView, ZoomControls
 │   │   ├── hooks/              # useExtensionMessages, useEditorActions, etc.
 │   │   └── office/             # Office simulation core
-│   │       ├── engine/         # OfficeState, renderer, game loop, character AI
+│   │       ├── engine/         # OfficeState, renderer (Canvas 2D), character FSM
 │   │       ├── editor/         # EditorState, EditorToolbar, edit actions
 │   │       ├── layout/         # Tile map, layout serializer, furniture catalog
 │   │       ├── components/     # OfficeCanvas, ToolOverlay
-│   │       └── sprites/        # Sprite data and cache
+│   │       └── sprites/        # Sprite data, palettes, and cache
 │   └── public/
 │       └── assets/             # Furniture, floors, walls, characters, default layout
 ├── dist/                       # Build output
